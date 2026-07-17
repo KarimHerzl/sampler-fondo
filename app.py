@@ -65,7 +65,7 @@ NIR_SOURCES = [
     {
         "name": "Piemonte ICE NIR 2009-2011",
         "bbox": [6.62, 44.06, 9.21, 46.46],
-        "url":  "https://opengis.csi.it/mp/regp_ortofoto_ice_nir_2010",
+        "url":  "https://geomap.reteunitaria.piemonte.it/mapproxy/service",
         "layer": "regp_ortofoto_ice_nir_2010",
         "crs":  "EPSG:3857", "res_cm": 45,
         "attr": "Ortofoto ICE NIR 2009-2011 - Regione Piemonte (CC-BY)",
@@ -179,7 +179,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v4 (NIR Piemonte). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v5 (NIR endpoint MapProxy). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
