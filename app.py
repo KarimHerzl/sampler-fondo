@@ -1,3 +1,4 @@
+pp · PY
 # -*- coding: utf-8 -*-
 # Sampler del fondo — legge le ortofoto regionali/nazionali (WMS) e classifica
 # ogni punto come asfalto / sterrato / coperto, per risolvere i tratti "grigi".
@@ -123,6 +124,23 @@ def features(img):
     return {"L": round(L, 3), "ExG": round(ExG, 3), "WARM": round(WARM, 3),
             "SAT": round(SAT, 3), "TEX": round(TEX, 3)}
  
+def uniformity(img):
+    # deviazione standard di luminosita' e tono su una finestra piu' larga:
+    # bassa = superficie uniforme (asfalto) ; alta = screziata (terra/ghiaia)
+    w, h = img.size
+    px = img.load()
+    x0, x1, y0, y1 = int(w*0.15), int(w*0.85), int(h*0.15), int(h*0.85)
+    Ls, Ws = [], []
+    for yy in range(y0, y1):
+        for xx in range(x0, x1):
+            R, G, B = px[xx, yy]
+            Ls.append((0.299*R + 0.587*G + 0.114*B) / 255.0)
+            Ws.append((R - B) / 255.0)
+    def std(a):
+        m = sum(a)/len(a)
+        return (sum((v-m)**2 for v in a)/len(a)) ** 0.5
+    return {"UNIF_L": round(std(Ls), 3), "UNIF_W": round(std(Ws), 3)}
+ 
 def classify(f):
     # Tarato su 8 punti reali (Piemonte, AGEA 30cm, finestra 80cm).
     # SCOPERTA: a distinguere e' il TONO TERROSO (WARM = R-B), non la luminosita'.
@@ -143,7 +161,7 @@ def cors(resp):
  
 @app.route("/")
 def home():
-    return "Sampler fondo v2 (regola WARM/terroso). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v3 (WARM + uniformita). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
  
 @app.route("/sources")
 def sources():
@@ -176,6 +194,10 @@ def surface_test():
     try:
         half = float(request.args.get("half", 0.4))
         f = features(fetch_image(src, lon, lat, half_m=half))
+        try:
+            f.update(uniformity(fetch_image(src, lon, lat, half_m=1.5, px=64)))
+        except Exception:
+            pass
         return jsonify({"source": src["name"], "res_cm": src["res_cm"],
                         "finestra_m": round(2 * half, 1),
                         "features": f, "guess": classify(f)})
