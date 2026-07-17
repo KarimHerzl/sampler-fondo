@@ -1,0 +1,199 @@
+# -*- coding: utf-8 -*-
+# Sampler del fondo — legge le ortofoto regionali/nazionali (WMS) e classifica
+# ogni punto come asfalto / sterrato / coperto, per risolvere i tratti "grigi".
+# Struttura a REGISTRO SORGENTI: aggiungere una regione o nazione = una riga.
+
+import io, math, os, re
+from flask import Flask, request, jsonify
+import requests
+from PIL import Image
+
+app = Flask(__name__)
+
+# ======================= REGISTRO SORGENTI =======================
+# bbox = [lon_min, lat_min, lon_max, lat_max]. L'ordine conta: prima le
+# regionali ad alta risoluzione, poi i fallback nazionali.
+# NB: i "layer" con nota (confermare) vanno verificati con /caps?url=... al 1o giro.
+SOURCES = [
+    {
+        "name": "Piemonte AGEA 2024",
+        "bbox": [6.62, 44.06, 9.21, 46.46],
+        "url":  "https://opengis.csi.it/mp/regp_agea_2024",
+        "layer": "regp_agea_2024",                      # (confermare con /caps)
+        "crs":  "EPSG:3857", "res_cm": 30,
+        "attr": "Ortofoto AGEA 2024 - Regione Piemonte",
+    },
+    {
+        "name": "Lombardia AGEA (ortofoto)",
+        "bbox": [8.45, 44.65, 11.45, 46.65],
+        "url":  "https://www.cartografia.servizirl.it/arcgis2/services/BaseMap/ortofoto2012UTM/ImageServer/WMSServer",
+        "layer": "0",                                   # (confermare con /caps)
+        "crs":  "EPSG:3857", "res_cm": 30,
+        "attr": "Ortofoto AGEA - Regione Lombardia (uso: consultazione pubblica)",
+    },
+    {
+        "name": "Emilia-Romagna AGEA 2023 RGB",
+        "bbox": [9.15, 43.70, 12.85, 45.15],
+        "url":  "https://servizigis.regione.emilia-romagna.it/wms/agea2023_rgb",
+        "layer": "Agea2023_RGB",                        # (confermare con /caps)
+        "crs":  "EPSG:3857", "res_cm": 20,
+        "attr": "Ortofoto AGEA 2023 - Regione Emilia-Romagna",
+    },
+    {
+        "name": "Toscana ortofoto (GEOscopio)",
+        "bbox": [9.60, 42.20, 12.45, 44.50],
+        "url":  "http://web.regione.toscana.it/wmsraster/com.rt.wms.RTmap/wms?map=wmsofc",
+        "layer": "ofc",                                 # (confermare con /caps)
+        "crs":  "EPSG:3857", "res_cm": 20,
+        "attr": "Ortofoto - Regione Toscana (GEOscopio)",
+    },
+    {
+        "name": "France IGN BD ORTHO",
+        "bbox": [-5.5, 41.0, 9.8, 51.6],
+        "url":  "https://data.geopf.fr/wms-r/wms",
+        "layer": "ORTHOIMAGERY.ORTHOPHOTOS",
+        "crs":  "EPSG:3857", "res_cm": 20,
+        "attr": "BD ORTHO - IGN France",
+    },
+    # --- pronte per il futuro (endpoint gia' noti) ---
+    # Marche:  http://wms.cartografia.marche.it/geoserver/Ortofoto/wms
+    # Liguria: https://geoservizi.regione.liguria.it/geoserver/...
+    # Lazio / Puglia / Abruzzo / ... ; Spagna PNOA; Italia nazionale (PCN)
+]
+
+def pick_source(lon, lat):
+    for s in SOURCES:
+        b = s["bbox"]
+        if b[0] <= lon <= b[2] and b[1] <= lat <= b[3]:
+            return s
+    return None
+
+# ======================= WMS GetMap =======================
+def _merc(lon, lat):
+    x = lon * 20037508.34 / 180.0
+    y = math.log(math.tan((90.0 + lat) * math.pi / 360.0)) / (math.pi / 180.0)
+    return x, y * 20037508.34 / 180.0
+
+def fetch_image(src, lon, lat, half_m=12, px=64):
+    crs = src.get("crs", "EPSG:3857")
+    if crs == "EPSG:3857":
+        x, y = _merc(lon, lat)
+        bbox = "%f,%f,%f,%f" % (x - half_m, y - half_m, x + half_m, y + half_m)
+    else:
+        dlat = half_m / 111320.0
+        dlon = half_m / (111320.0 * math.cos(math.radians(lat)))
+        if crs == "CRS:84":
+            bbox = "%f,%f,%f,%f" % (lon - dlon, lat - dlat, lon + dlon, lat + dlat)
+        else:  # EPSG:4326 in WMS 1.3.0 -> ordine lat,lon
+            bbox = "%f,%f,%f,%f" % (lat - dlat, lon - dlon, lat + dlat, lon + dlon)
+    params = {
+        "SERVICE": "WMS", "VERSION": "1.3.0", "REQUEST": "GetMap",
+        "LAYERS": src["layer"], "STYLES": "",
+        "CRS": crs, "BBOX": bbox,
+        "WIDTH": px, "HEIGHT": px, "FORMAT": "image/jpeg",
+    }
+    r = requests.get(src["url"], params=params, timeout=25,
+                     headers={"User-Agent": "TracciatoriCarbonari/1.0"})
+    ct = r.headers.get("content-type", "")
+    if "image" not in ct:
+        raise RuntimeError("il WMS non ha restituito un'immagine (%s): %s"
+                           % (ct, r.text[:180]))
+    return Image.open(io.BytesIO(r.content)).convert("RGB")
+
+# ======================= FEATURE + CLASSIFICAZIONE =======================
+def features(img):
+    w, h = img.size
+    px = img.load()
+    x0, x1, y0, y1 = w // 4, 3 * w // 4, h // 4, 3 * h // 4
+    Ls, exg, warm = [], [], []
+    for yy in range(y0, y1):
+        for xx in range(x0, x1):
+            R, G, B = px[xx, yy]
+            s = R + G + B + 1e-6
+            Ls.append((0.299 * R + 0.587 * G + 0.114 * B) / 255.0)
+            exg.append((2.0 * G - R - B) / s)
+            warm.append((R - B) / 255.0)
+    n = len(Ls)
+    mean = lambda a: sum(a) / len(a)
+    L, ExG, WARM = mean(Ls), mean(exg), mean(warm)
+    TEX = (sum((v - L) ** 2 for v in Ls) / n) ** 0.5
+    return {"L": round(L, 3), "ExG": round(ExG, 3),
+            "WARM": round(WARM, 3), "TEX": round(TEX, 3)}
+
+def classify(f):
+    # SOGLIE PROVVISORIE — da tarare sui numeri reali (/surface/test)
+    if f["ExG"] > 0.10:                         return "coperto"
+    if f["L"] < 0.35 and f["WARM"] < 0.03:      return "asfalto"
+    if f["L"] >= 0.42 or f["WARM"] >= 0.06:     return "sterrato"
+    return "incerto"
+
+# ======================= ENDPOINT =======================
+@app.after_request
+def cors(resp):
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    return resp
+
+@app.route("/")
+def home():
+    return "Sampler fondo attivo. /sources  |  /caps  |  /surface/test?lat=45.09&lon=8.48"
+
+@app.route("/sources")
+def sources():
+    return jsonify([{"name": s["name"], "res_cm": s["res_cm"],
+                     "bbox": s["bbox"], "layer": s["layer"]} for s in SOURCES])
+
+@app.route("/caps")
+def caps():
+    # scopre i nomi dei layer di un WMS (o di tutte le sorgenti se senza ?url=)
+    url = request.args.get("url")
+    if not url:
+        return jsonify([{"name": s["name"], "url": s["url"]} for s in SOURCES])
+    try:
+        full = url + ("&" if "?" in url else "?") + "SERVICE=WMS&REQUEST=GetCapabilities&VERSION=1.3.0"
+        r = requests.get(full, timeout=25, headers={"User-Agent": "TracciatoriCarbonari/1.0"})
+        names = re.findall(r"<Name>\s*([^<]+?)\s*</Name>", r.text)
+        return jsonify({"status": r.status_code, "n": len(names), "layers": names[:80]})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+
+@app.route("/surface/test")
+def surface_test():
+    try:
+        lon = float(request.args["lon"]); lat = float(request.args["lat"])
+    except Exception:
+        return jsonify({"error": "usa ?lat=..&lon=.."}), 400
+    src = pick_source(lon, lat)
+    if not src:
+        return jsonify({"error": "nessuna sorgente copre questo punto"}), 404
+    try:
+        f = features(fetch_image(src, lon, lat))
+        return jsonify({"source": src["name"], "res_cm": src["res_cm"],
+                        "features": f, "guess": classify(f)})
+    except Exception as e:
+        return jsonify({"source": src["name"], "error": str(e)}), 502
+
+@app.route("/surface", methods=["POST", "OPTIONS"])
+def surface():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    data = request.get_json(force=True, silent=True) or {}
+    pts = data.get("points", [])
+    out = []
+    for p in pts:
+        try:
+            lon, lat = float(p[0]), float(p[1])
+        except Exception:
+            out.append({"guess": "input-non-valido"}); continue
+        src = pick_source(lon, lat)
+        if not src:
+            out.append({"guess": "nessuna-sorgente"}); continue
+        try:
+            f = features(fetch_image(src, lon, lat))
+            out.append({"guess": classify(f), "features": f})
+        except Exception as e:
+            out.append({"guess": "errore", "err": str(e)[:100]})
+    return jsonify({"results": out})
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
