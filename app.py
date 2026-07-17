@@ -61,6 +61,25 @@ SOURCES = [
     # Lazio / Puglia / Abruzzo / ... ; Spagna PNOA; Italia nazionale (PCN)
 ]
 
+NIR_SOURCES = [
+    {
+        "name": "Piemonte ICE NIR 2009-2011",
+        "bbox": [6.62, 44.06, 9.21, 46.46],
+        "url":  "https://opengis.csi.it/mp/regp_ortofoto_ice_nir_2010",
+        "layer": "regp_ortofoto_ice_nir_2010",
+        "crs":  "EPSG:3857", "res_cm": 45,
+        "attr": "Ortofoto ICE NIR 2009-2011 - Regione Piemonte (CC-BY)",
+    },
+    # future: Emilia agea..._nir ; Toscana rt_ofc...4R1G2B (NIR nel canale rosso)
+]
+
+def pick_nir(lon, lat):
+    for s in NIR_SOURCES:
+        b = s["bbox"]
+        if b[0] <= lon <= b[2] and b[1] <= lat <= b[3]:
+            return s
+    return None
+
 def pick_source(lon, lat):
     for s in SOURCES:
         b = s["bbox"]
@@ -160,7 +179,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v3 (WARM + uniformita). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v4 (NIR Piemonte). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
@@ -224,6 +243,34 @@ def surface():
         except Exception as e:
             out.append({"guess": "errore", "err": str(e)[:100]})
     return jsonify({"results": out})
+
+@app.route("/nir/test")
+def nir_test():
+    try:
+        lon = float(request.args["lon"]); lat = float(request.args["lat"])
+    except Exception:
+        return jsonify({"error": "usa ?lat=..&lon=.."}), 400
+    src = pick_nir(lon, lat)
+    if not src:
+        return jsonify({"error": "nessuna sorgente NIR per questo punto"}), 404
+    try:
+        half = float(request.args.get("half", 0.4))
+        img = fetch_image(src, lon, lat, half_m=half)
+        w, h = img.size; px = img.load()
+        x0, x1, y0, y1 = int(w*0.2), int(w*0.8), int(h*0.2), int(h*0.8)
+        Rs = Gs = Bs = Ls = 0; n = 0
+        for yy in range(y0, y1):
+            for xx in range(x0, x1):
+                R, G, B = px[xx, yy]
+                Rs += R; Gs += G; Bs += B
+                Ls += (0.299*R + 0.587*G + 0.114*B)
+                n += 1
+        return jsonify({"source": src["name"], "finestra_m": round(2*half, 1),
+                        "NIR_L": round(Ls/n/255.0, 3),
+                        "R": round(Rs/n/255.0, 3), "G": round(Gs/n/255.0, 3),
+                        "B": round(Bs/n/255.0, 3)})
+    except Exception as e:
+        return jsonify({"source": src["name"], "error": str(e)}), 502
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
