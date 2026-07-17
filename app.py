@@ -106,7 +106,7 @@ def features(img):
     px = img.load()
     m0, m1 = int(w*0.20), int(w*0.80)
     x0, x1, y0, y1 = m0, m1, m0, m1
-    Ls, exg, warm = [], [], []
+    Ls, exg, warm, sat = [], [], [], []
     for yy in range(y0, y1):
         for xx in range(x0, x1):
             R, G, B = px[xx, yy]
@@ -114,12 +114,14 @@ def features(img):
             Ls.append((0.299 * R + 0.587 * G + 0.114 * B) / 255.0)
             exg.append((2.0 * G - R - B) / s)
             warm.append((R - B) / 255.0)
+            mx = max(R, G, B); mn = min(R, G, B)
+            sat.append((mx - mn) / (mx + 1e-6))          # 0=grigio, alto=colorato
     n = len(Ls)
     mean = lambda a: sum(a) / len(a)
-    L, ExG, WARM = mean(Ls), mean(exg), mean(warm)
+    L, ExG, WARM, SAT = mean(Ls), mean(exg), mean(warm), mean(sat)
     TEX = (sum((v - L) ** 2 for v in Ls) / n) ** 0.5
-    return {"L": round(L, 3), "ExG": round(ExG, 3),
-            "WARM": round(WARM, 3), "TEX": round(TEX, 3)}
+    return {"L": round(L, 3), "ExG": round(ExG, 3), "WARM": round(WARM, 3),
+            "SAT": round(SAT, 3), "TEX": round(TEX, 3)}
 
 def classify(f):
     # Tarato su ortofoto AGEA reali (Piemonte, finestra 80 cm):
