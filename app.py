@@ -42,8 +42,8 @@ SOURCES = [
     {
         "name": "Toscana ortofoto (GEOscopio)",
         "bbox": [9.60, 42.20, 12.45, 44.50],
-        "url":  "http://web.regione.toscana.it/wmsraster/com.rt.wms.RTmap/wms?map=wmsofc",
-        "layer": "ofc",                                 # (confermare con /caps)
+        "url":  "http://www502.regione.toscana.it/wmsraster/com.rt.wms.RTmap/wms?map=wmsofc",
+        "layer": "rt_ofc.10k13",                        # confermato via /caps (2013, 10k)
         "crs":  "EPSG:3857", "res_cm": 20,
         "attr": "Ortofoto - Regione Toscana (GEOscopio)",
     },
