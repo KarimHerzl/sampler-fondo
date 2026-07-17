@@ -1,6 +1,6 @@
-pp · PY
-# -*- coding: utf-8 -*-
-# Sampler del fondo — legge le ortofoto regionali/nazionali (WMS) e classifica
+p · PY
+# coding: utf-8
+# Sampler del fondo - legge le ortofoto regionali/nazionali (WMS) e classifica
 # ogni punto come asfalto / sterrato / coperto, per risolvere i tratti "grigi".
 # Struttura a REGISTRO SORGENTI: aggiungere una regione o nazione = una riga.
  
