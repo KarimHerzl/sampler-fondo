@@ -1,15 +1,16 @@
+
 # -*- coding: utf-8 -*-
 # Sampler del fondo — legge le ortofoto regionali/nazionali (WMS) e classifica
 # ogni punto come asfalto / sterrato / coperto, per risolvere i tratti "grigi".
 # Struttura a REGISTRO SORGENTI: aggiungere una regione o nazione = una riga.
-
+ 
 import io, math, os, re
 from flask import Flask, request, jsonify
 import requests
 from PIL import Image
-
+ 
 app = Flask(__name__)
-
+ 
 # ======================= REGISTRO SORGENTI =======================
 # bbox = [lon_min, lat_min, lon_max, lat_max]. L'ordine conta: prima le
 # regionali ad alta risoluzione, poi i fallback nazionali.
@@ -60,21 +61,21 @@ SOURCES = [
     # Liguria: https://geoservizi.regione.liguria.it/geoserver/...
     # Lazio / Puglia / Abruzzo / ... ; Spagna PNOA; Italia nazionale (PCN)
 ]
-
+ 
 def pick_source(lon, lat):
     for s in SOURCES:
         b = s["bbox"]
         if b[0] <= lon <= b[2] and b[1] <= lat <= b[3]:
             return s
     return None
-
+ 
 # ======================= WMS GetMap =======================
 def _merc(lon, lat):
     x = lon * 20037508.34 / 180.0
     y = math.log(math.tan((90.0 + lat) * math.pi / 360.0)) / (math.pi / 180.0)
     return x, y * 20037508.34 / 180.0
-
-def fetch_image(src, lon, lat, half_m=12, px=64):
+ 
+def fetch_image(src, lon, lat, half_m=0.4, px=64):
     crs = src.get("crs", "EPSG:3857")
     if crs == "EPSG:3857":
         x, y = _merc(lon, lat)
@@ -99,12 +100,13 @@ def fetch_image(src, lon, lat, half_m=12, px=64):
         raise RuntimeError("il WMS non ha restituito un'immagine (%s): %s"
                            % (ct, r.text[:180]))
     return Image.open(io.BytesIO(r.content)).convert("RGB")
-
+ 
 # ======================= FEATURE + CLASSIFICAZIONE =======================
 def features(img):
     w, h = img.size
     px = img.load()
-    x0, x1, y0, y1 = w // 4, 3 * w // 4, h // 4, 3 * h // 4
+    m0, m1 = int(w*0.20), int(w*0.80)
+    x0, x1, y0, y1 = m0, m1, m0, m1
     Ls, exg, warm = [], [], []
     for yy in range(y0, y1):
         for xx in range(x0, x1):
@@ -119,30 +121,30 @@ def features(img):
     TEX = (sum((v - L) ** 2 for v in Ls) / n) ** 0.5
     return {"L": round(L, 3), "ExG": round(ExG, 3),
             "WARM": round(WARM, 3), "TEX": round(TEX, 3)}
-
+ 
 def classify(f):
     # SOGLIE PROVVISORIE — da tarare sui numeri reali (/surface/test)
     if f["ExG"] > 0.10:                         return "coperto"
     if f["L"] < 0.35 and f["WARM"] < 0.03:      return "asfalto"
     if f["L"] >= 0.42 or f["WARM"] >= 0.06:     return "sterrato"
     return "incerto"
-
+ 
 # ======================= ENDPOINT =======================
 @app.after_request
 def cors(resp):
     resp.headers["Access-Control-Allow-Origin"] = "*"
     resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     return resp
-
+ 
 @app.route("/")
 def home():
     return "Sampler fondo attivo. /sources  |  /caps  |  /surface/test?lat=45.09&lon=8.48"
-
+ 
 @app.route("/sources")
 def sources():
     return jsonify([{"name": s["name"], "res_cm": s["res_cm"],
                      "bbox": s["bbox"], "layer": s["layer"]} for s in SOURCES])
-
+ 
 @app.route("/caps")
 def caps():
     # scopre i nomi dei layer di un WMS (o di tutte le sorgenti se senza ?url=)
@@ -156,7 +158,7 @@ def caps():
         return jsonify({"status": r.status_code, "n": len(names), "layers": names[:80]})
     except Exception as e:
         return jsonify({"error": str(e)}), 502
-
+ 
 @app.route("/surface/test")
 def surface_test():
     try:
@@ -167,12 +169,14 @@ def surface_test():
     if not src:
         return jsonify({"error": "nessuna sorgente copre questo punto"}), 404
     try:
-        f = features(fetch_image(src, lon, lat))
+        half = float(request.args.get("half", 0.4))
+        f = features(fetch_image(src, lon, lat, half_m=half))
         return jsonify({"source": src["name"], "res_cm": src["res_cm"],
+                        "finestra_m": round(2 * half, 1),
                         "features": f, "guess": classify(f)})
     except Exception as e:
         return jsonify({"source": src["name"], "error": str(e)}), 502
-
+ 
 @app.route("/surface", methods=["POST", "OPTIONS"])
 def surface():
     if request.method == "OPTIONS":
@@ -194,6 +198,7 @@ def surface():
         except Exception as e:
             out.append({"guess": "errore", "err": str(e)[:100]})
     return jsonify({"results": out})
-
+ 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+ 
