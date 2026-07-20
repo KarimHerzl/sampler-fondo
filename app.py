@@ -170,6 +170,26 @@ def classify(f):
     if w <= 0.06:                  return "asfalto"    # grigio neutro
     return "incerto"                                   # fascia di confine 0.06-0.09
 
+def classify_smart(src, lon, lat, half=0.4):
+    # 1) lettura centrale
+    f = features(fetch_image(src, lon, lat, half_m=half))
+    g = classify(f)
+    if g in ("sterrato", "asfalto"):
+        return g, f
+    # 2) traccia a due solchi: il centro e' erboso/ambiguo -> provo i lati (~1.2 m)
+    d = 1.2
+    dlat = d / 111320.0
+    dlon = d / (111320.0 * math.cos(math.radians(lat)))
+    for (ala, alo) in ((dlat, 0), (-dlat, 0), (0, dlon), (0, -dlon)):
+        try:
+            f2 = features(fetch_image(src, lon + alo, lat + ala, half_m=half))
+            if classify(f2) == "sterrato":
+                f2["nota"] = "solco laterale"
+                return "sterrato", f2
+        except Exception:
+            pass
+    return g, f
+
 # ======================= ENDPOINT =======================
 @app.after_request
 def cors(resp):
@@ -179,7 +199,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v5 (NIR endpoint MapProxy). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v6 (solchi laterali). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
@@ -216,9 +236,12 @@ def surface_test():
             f.update(uniformity(fetch_image(src, lon, lat, half_m=1.5, px=64)))
         except Exception:
             pass
+        g = classify(f)
+        if g not in ("sterrato", "asfalto"):
+            g, f = classify_smart(src, lon, lat, half=half)
         return jsonify({"source": src["name"], "res_cm": src["res_cm"],
                         "finestra_m": round(2 * half, 1),
-                        "features": f, "guess": classify(f)})
+                        "features": f, "guess": g})
     except Exception as e:
         return jsonify({"source": src["name"], "error": str(e)}), 502
 
@@ -238,8 +261,8 @@ def surface():
         if not src:
             out.append({"guess": "nessuna-sorgente"}); continue
         try:
-            f = features(fetch_image(src, lon, lat))
-            out.append({"guess": classify(f), "features": f})
+            g, f = classify_smart(src, lon, lat)
+            out.append({"guess": g, "features": f})
         except Exception as e:
             out.append({"guess": "errore", "err": str(e)[:100]})
     return jsonify({"results": out})
