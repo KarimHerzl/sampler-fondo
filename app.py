@@ -165,9 +165,12 @@ def classify(f):
     #   sterrato/terra = caldo/colorato ; asfalto = grigio neutro.
     #   (uno sterrato scuro puo' avere L bassa come un asfalto, ma WARM alto)
     w = f.get("WARM", 0); sat = f.get("SAT", 0)
-    if f["ExG"] > 0.15:            return "coperto"    # vegetazione / ombra verde
-    if w >= 0.09 or sat >= 0.20:   return "sterrato"   # terroso / colorato
-    if w <= 0.06:                  return "asfalto"    # grigio neutro
+    # guardia ombra: troppo scuro (o tono bluastro) = non si legge il fondo.
+    # senza questa, l'ombra bluastra viene scambiata per terra per via della SAT.
+    if f["L"] < 0.25 or w < -0.02:  return "coperto"   # ombra / chioma: non leggibile
+    if f["ExG"] > 0.15:             return "coperto"   # vegetazione
+    if w >= 0.09 or sat >= 0.20:    return "sterrato"  # terroso / colorato
+    if w <= 0.06:                   return "asfalto"   # grigio neutro
     return "incerto"                                   # fascia di confine 0.06-0.09
 
 def classify_smart(src, lon, lat, half=0.4):
@@ -199,7 +202,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v6 (solchi laterali). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v7 (guardia ombra). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
