@@ -52,6 +52,7 @@ SOURCES = [
         "bbox": [7.45, 43.75, 10.10, 44.70],
         "url":  "https://geoservizi.regione.liguria.it/geoserver/M2248/ows",
         "layer": "L8256",                               # confermato via /caps
+        "styles": "8256",                               # senza stile il server va in crash (NPE)
         "crs":  "EPSG:3857", "res_cm": 20,
         "attr": "Ortofoto - Regione Liguria (Geoportale)",
     },
@@ -163,7 +164,7 @@ def fetch_image(src, lon, lat, half_m=0.4, px=64):
             bbox = "%f,%f,%f,%f" % (lat - dlat, lon - dlon, lat + dlat, lon + dlon)
     params = {
         "SERVICE": "WMS", "VERSION": "1.3.0", "REQUEST": "GetMap",
-        "LAYERS": src["layer"], "STYLES": "",
+        "LAYERS": src["layer"], "STYLES": src.get("styles", ""),
         "CRS": crs, "BBOX": bbox,
         "WIDTH": px, "HEIGHT": px, "FORMAT": "image/jpeg",
     }
@@ -288,7 +289,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v19 (errori completi nel debug). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v20 (stile Liguria). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
