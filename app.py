@@ -51,7 +51,8 @@ SOURCES = [
         "name": "Liguria ortofoto",
         "bbox": [7.45, 43.75, 10.10, 44.70],
         "url":  "https://geoservizi.regione.liguria.it/geoserver/M2555/ows",
-        "layer": "M2555",                               # (confermare con /caps)
+        "layer": "L10401",                              # confermato via /caps
+        "styles": "10401",
         "crs":  "EPSG:3857", "res_cm": 20,
         "attr": "Ortofoto - Regione Liguria (Geoportale)",
     },
@@ -299,7 +300,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v22 (Liguria M2555). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v23 (Liguria L10401). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
