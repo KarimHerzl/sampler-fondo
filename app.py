@@ -24,20 +24,20 @@ SOURCES = [
         "attr": "Ortofoto AGEA 2024 - Regione Piemonte",
     },
     {
-        "name": "Lombardia AGEA (ortofoto)",
-        "bbox": [8.45, 44.65, 11.45, 46.65],
-        "url":  "https://www.cartografia.servizirl.it/arcgis2/services/BaseMap/ortofoto2012UTM/ImageServer/WMSServer",
-        "layer": "0",                                   # (confermare con /caps)
-        "crs":  "EPSG:3857", "res_cm": 30,
-        "attr": "Ortofoto AGEA - Regione Lombardia (uso: consultazione pubblica)",
-    },
-    {
         "name": "Emilia-Romagna AGEA 2023 RGB",
         "bbox": [9.15, 43.70, 12.85, 45.15],
         "url":  "https://servizigis.regione.emilia-romagna.it/wms/agea2023_rgb",
         "layer": "Agea2023_RGB",                        # (confermare con /caps)
         "crs":  "EPSG:3857", "res_cm": 20,
         "attr": "Ortofoto AGEA 2023 - Regione Emilia-Romagna",
+    },
+    {
+        "name": "Lombardia AGEA (ortofoto)",
+        "bbox": [8.45, 44.65, 11.45, 46.65],
+        "url":  "https://www.cartografia.servizirl.it/arcgis2/services/BaseMap/ortofoto2012UTM/ImageServer/WMSServer",
+        "layer": "0",                                   # (confermare con /caps)
+        "crs":  "EPSG:3857", "res_cm": 30,
+        "attr": "Ortofoto AGEA - Regione Lombardia (uso: consultazione pubblica)",
     },
     {
         "name": "Toscana ortofoto (GEOscopio)",
@@ -81,11 +81,41 @@ def pick_nir(lon, lat):
     return None
 
 def pick_source(lon, lat):
+    c = candidates(lon, lat)
+    return c[0] if c else None
+
+def candidates(lon, lat):
+    out = []
     for s in SOURCES:
         b = s["bbox"]
         if b[0] <= lon <= b[2] and b[1] <= lat <= b[3]:
-            return s
-    return None
+            out.append(s)
+    return out
+
+def is_blank(img):
+    # immagine vuota/nera/uniforme = la sorgente non copre davvero questo punto
+    w, h = img.size
+    px = img.load()
+    mn, mx = 255, 0
+    for yy in range(0, h, 4):
+        for xx in range(0, w, 4):
+            v = max(px[xx, yy])
+            if v < mn: mn = v
+            if v > mx: mx = v
+    return mx < 12 or (mx - mn) < 3
+
+def fetch_first_good(lon, lat, half_m=0.4, px=64):
+    # prova le sorgenti in ordine e usa la prima che restituisce un'immagine vera
+    last = None
+    for src in candidates(lon, lat):
+        try:
+            img = fetch_image(src, lon, lat, half_m=half_m, px=px)
+            if not is_blank(img):
+                return src, img
+            last = (src, img)
+        except Exception:
+            continue
+    return last if last else (None, None)
 
 # ======================= WMS GetMap =======================
 def _merc(lon, lat):
@@ -207,7 +237,10 @@ def edges(img):
 
 def classify_smart(src, lon, lat, half=0.4):
     # 1) lettura centrale
-    f = features(fetch_image(src, lon, lat, half_m=half))
+    src2, img = fetch_first_good(lon, lat, half_m=half)
+    if src2 is not None:
+        src = src2
+    f = features(img if img is not None else fetch_image(src, lon, lat, half_m=half))
     g = classify(f)
     if g in ("sterrato", "asfalto"):
         return g, f
@@ -234,7 +267,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v8b (bordi sempre inclusi). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v9 (salta sorgenti vuote). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
@@ -266,7 +299,10 @@ def surface_test():
         return jsonify({"error": "nessuna sorgente copre questo punto"}), 404
     try:
         half = float(request.args.get("half", 0.4))
-        f = features(fetch_image(src, lon, lat, half_m=half))
+        src2, img = fetch_first_good(lon, lat, half_m=half)
+        if src2 is not None:
+            src = src2
+        f = features(img if img is not None else fetch_image(src, lon, lat, half_m=half))
         try:
             f.update(uniformity(fetch_image(src, lon, lat, half_m=1.5, px=64)))
         except Exception:
