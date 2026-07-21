@@ -48,6 +48,14 @@ SOURCES = [
         "attr": "True ortofoto 2017-2020 - Regione FVG (IRDAT)",
     },
     {
+        "name": "Liguria ortofoto",
+        "bbox": [7.45, 43.75, 10.10, 44.70],
+        "url":  "https://geoservizi.regione.liguria.it/geoserver/M2248/ows",
+        "layer": "M2248",                               # (confermare con /caps)
+        "crs":  "EPSG:3857", "res_cm": 20,
+        "attr": "Ortofoto - Regione Liguria (Geoportale)",
+    },
+    {
         "name": "Lombardia AGEA (ortofoto)",
         "bbox": [8.45, 44.65, 11.45, 46.65],
         "url":  "https://www.cartografia.servizirl.it/arcgis2/services/BaseMap/ortofoto2012UTM/ImageServer/WMSServer",
@@ -277,7 +285,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v15 (Veneto e FVG confermati). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v16 (aggiunta Liguria). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
