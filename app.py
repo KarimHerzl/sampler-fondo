@@ -60,7 +60,8 @@ SOURCES = [
         "name": "Sardegna AGEA 2022",
         "bbox": [8.05, 38.75, 9.90, 41.35],
         "url":  "https://webgis.regione.sardegna.it/geoserverraster/ows",
-        "layer": "ortofoto_2022",                       # (confermare con /caps)
+        "layer": "raster:Mosaico_2022_GB",              # confermato: "ortofoto_2022" era lo stile
+        "styles": "ortofoto_2022",
         "crs":  "CRS:84", "res_cm": 20,
         "attr": "Mosaico Ortofoto MASAF-AGEA 2022 - Regione Sardegna (consultazione)",
     },
@@ -308,7 +309,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v25 (Sardegna + filtro caps). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v26 (Sardegna Mosaico_2022_GB). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
