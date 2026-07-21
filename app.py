@@ -162,19 +162,30 @@ def fetch_image(src, lon, lat, half_m=0.4, px=64):
             bbox = "%f,%f,%f,%f" % (lon - dlon, lat - dlat, lon + dlon, lat + dlat)
         else:  # EPSG:4326 in WMS 1.3.0 -> ordine lat,lon
             bbox = "%f,%f,%f,%f" % (lat - dlat, lon - dlon, lat + dlat, lon + dlon)
-    params = {
-        "SERVICE": "WMS", "VERSION": "1.3.0", "REQUEST": "GetMap",
-        "LAYERS": src["layer"], "STYLES": src.get("styles", ""),
-        "CRS": crs, "BBOX": bbox,
-        "WIDTH": px, "HEIGHT": px, "FORMAT": "image/jpeg",
-    }
-    r = requests.get(src["url"], params=params, timeout=25,
-                     headers={"User-Agent": "TracciatoriCarbonari/1.0"})
-    ct = r.headers.get("content-type", "")
-    if "image" not in ct:
-        raise RuntimeError("il WMS non ha restituito un'immagine (%s): %s"
-                           % (ct, r.text[:500]))
-    return Image.open(io.BytesIO(r.content)).convert("RGB")
+    # tentativi in ordine: alcuni server rifiutano il JPEG (crash NPE) o la 1.3.0
+    attempts = [("1.3.0", "image/jpeg"), ("1.3.0", "image/png"),
+                ("1.1.1", "image/jpeg"), ("1.1.1", "image/png")]
+    last_err = None
+    for ver, fmt in attempts:
+        params = {
+            "SERVICE": "WMS", "VERSION": ver, "REQUEST": "GetMap",
+            "LAYERS": src["layer"], "STYLES": src.get("styles", ""),
+            "BBOX": bbox, "WIDTH": px, "HEIGHT": px, "FORMAT": fmt,
+        }
+        if ver == "1.3.0":
+            params["CRS"] = crs
+        else:
+            params["SRS"] = crs
+        try:
+            r = requests.get(src["url"], params=params, timeout=25,
+                             headers={"User-Agent": "TracciatoriCarbonari/1.0"})
+            ct = r.headers.get("content-type", "")
+            if "image" in ct:
+                return Image.open(io.BytesIO(r.content)).convert("RGB")
+            last_err = "il WMS non ha restituito un'immagine (%s): %s" % (ct, r.text[:500])
+        except Exception as e:
+            last_err = str(e)[:300]
+    raise RuntimeError(last_err or "nessuna risposta dal WMS")
 
 # ======================= FEATURE + CLASSIFICAZIONE =======================
 def features(img):
@@ -289,7 +300,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v20 (stile Liguria). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v21 (tentativi multipli WMS). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
