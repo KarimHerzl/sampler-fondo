@@ -53,7 +53,7 @@ SOURCES = [
         "url":  "https://geoservizi.regione.liguria.it/geoserver/M2555/ows",
         "layer": "L10401",                              # confermato via /caps
         "styles": "10401",
-        "crs":  "EPSG:3857", "res_cm": 20,
+        "crs":  "CRS:84", "res_cm": 20,                 # il layer e' nativo in 7791/CRS:84: la 3857 a scala estrema torna vuota
         "attr": "Ortofoto - Regione Liguria (Geoportale)",
     },
     {
@@ -300,7 +300,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v23 (Liguria L10401). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v24 (Liguria in CRS:84). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
