@@ -263,7 +263,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v10b (regola prudente, funzioni ripristinate). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v11 (epoche + dispersione). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
@@ -325,6 +325,7 @@ def surface():
     data = request.get_json(force=True, silent=True) or {}
     pts = data.get("points", [])
     out = []
+    warms = []
     for p in pts:
         try:
             lon, lat = float(p[0]), float(p[1])
@@ -335,10 +336,43 @@ def surface():
             out.append({"guess": "nessuna-sorgente"}); continue
         try:
             g, f = classify_smart(src, lon, lat)
+            warms.append(f.get("WARM"))
             out.append({"guess": g, "features": f})
         except Exception as e:
             out.append({"guess": "errore", "err": str(e)[:100]})
-    return jsonify({"results": out})
+    disp = None
+    ws = [w for w in warms if w is not None]
+    if len(ws) >= 3:
+        m = sum(ws)/len(ws)
+        disp = round((sum((w-m)**2 for w in ws)/len(ws)) ** 0.5, 4)
+    return jsonify({"results": out, "DISP_W": disp,
+                    "nota_disp": "dispersione WARM sui punti inviati: bassa = monotono (asfalto?), alta = variegato (sterrato?)"})
+
+@app.route("/epoch/test")
+def epoch_test():
+    # Confronto tra annate: l'asfalto resta identico nel tempo, lo sterrato cambia.
+    # Legge il punto su AGEA 2024 e su ICE 2010 (Piemonte) e confronta le firme.
+    try:
+        lon = float(request.args["lon"]); lat = float(request.args["lat"])
+    except Exception:
+        return jsonify({"error": "usa ?lat=..&lon=.."}), 400
+    src24 = pick_source(lon, lat)
+    src10 = pick_nir(lon, lat)   # ICE 2010 (falso colore NIR, ma per il confronto basta)
+    if not src24 or not src10:
+        return jsonify({"error": "confronto epoche disponibile solo in Piemonte"}), 404
+    try:
+        half = float(request.args.get("half", 0.4))
+        f24 = features(fetch_image(src24, lon, lat, half_m=half))
+        f10 = features(fetch_image(src10, lon, lat, half_m=half))
+        # differenza tra le firme (su L e WARM, i piu' stabili)
+        dL = abs(f24["L"] - f10["L"])
+        dW = abs(f24["WARM"] - f10["WARM"])
+        return jsonify({"a2024": f24, "b2010": f10,
+                        "DIFF_L": round(dL, 3), "DIFF_W": round(dW, 3),
+                        "finestra_m": round(2*half, 1),
+                        "nota": "DIFF bassi = stabile nel tempo (indizia asfalto); alti = cambiato (indizia sterrato)"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
 
 @app.route("/nir/test")
 def nir_test():
