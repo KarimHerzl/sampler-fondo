@@ -57,6 +57,14 @@ SOURCES = [
         "attr": "Ortofoto - Regione Liguria (Geoportale)",
     },
     {
+        "name": "Sardegna AGEA 2022",
+        "bbox": [8.05, 38.75, 9.90, 41.35],
+        "url":  "https://webgis.regione.sardegna.it/geoserverraster/ows",
+        "layer": "ortofoto_2022",                       # (confermare con /caps)
+        "crs":  "CRS:84", "res_cm": 20,
+        "attr": "Mosaico Ortofoto MASAF-AGEA 2022 - Regione Sardegna (consultazione)",
+    },
+    {
         "name": "Lombardia AGEA (ortofoto)",
         "bbox": [8.45, 44.65, 11.45, 46.65],
         "url":  "https://www.cartografia.servizirl.it/arcgis2/services/BaseMap/ortofoto2012UTM/ImageServer/WMSServer",
@@ -300,7 +308,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v24 (Liguria in CRS:84). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v25 (Sardegna + filtro caps). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
@@ -317,7 +325,10 @@ def caps():
         full = url + ("&" if "?" in url else "?") + "SERVICE=WMS&REQUEST=GetCapabilities&VERSION=1.3.0"
         r = requests.get(full, timeout=25, headers={"User-Agent": "TracciatoriCarbonari/1.0"})
         names = re.findall(r"<Name>\s*([^<]+?)\s*</Name>", r.text)
-        return jsonify({"status": r.status_code, "n": len(names), "layers": names[:80]})
+        q = request.args.get("q", "").lower()
+        shown = [n for n in names if q in n.lower()] if q else names
+        return jsonify({"status": r.status_code, "n": len(names),
+                        "filtro": q or None, "layers": shown[:80]})
     except Exception as e:
         return jsonify({"error": str(e)}), 502
 
