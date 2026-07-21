@@ -172,7 +172,7 @@ def fetch_image(src, lon, lat, half_m=0.4, px=64):
     ct = r.headers.get("content-type", "")
     if "image" not in ct:
         raise RuntimeError("il WMS non ha restituito un'immagine (%s): %s"
-                           % (ct, r.text[:180]))
+                           % (ct, r.text[:500]))
     return Image.open(io.BytesIO(r.content)).convert("RGB")
 
 # ======================= FEATURE + CLASSIFICAZIONE =======================
@@ -288,7 +288,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v18 (guardia bianco + debug). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v19 (errori completi nel debug). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
@@ -328,7 +328,7 @@ def surface_test():
                     diag.append({"source": cand["name"],
                                  "esito": "vuota" if is_blank(im) else "OK"})
                 except Exception as e:
-                    diag.append({"source": cand["name"], "esito": "errore: " + str(e)[:120]})
+                    diag.append({"source": cand["name"], "esito": "errore: " + str(e)[:450]})
             return jsonify({"debug": diag})
         src2, img = fetch_first_good(lon, lat, half_m=half)
         if src2 is not None:
