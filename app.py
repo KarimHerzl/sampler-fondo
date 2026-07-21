@@ -261,7 +261,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v12 (tarata su 118 punti). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v13 (ritagli per test visione). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
@@ -345,6 +345,30 @@ def surface():
         disp = round((sum((w-m)**2 for w in ws)/len(ws)) ** 0.5, 4)
     return jsonify({"results": out, "DISP_W": disp,
                     "nota_disp": "dispersione WARM sui punti inviati: bassa = monotono (asfalto?), alta = variegato (sterrato?)"})
+
+@app.route("/image")
+def image_crop():
+    # Ritaglio d'ortofoto largo con mirino sul punto: serve al test di visione.
+    # ?lat=..&lon=..&half=20 (metri di semi-finestra) &px=256
+    try:
+        lon = float(request.args["lon"]); lat = float(request.args["lat"])
+    except Exception:
+        return jsonify({"error": "usa ?lat=..&lon=.."}), 400
+    half = float(request.args.get("half", 20))
+    px = int(request.args.get("px", 256))
+    src, img = fetch_first_good(lon, lat, half_m=half, px=px)
+    if img is None:
+        return jsonify({"error": "nessuna immagine per questo punto"}), 404
+    from PIL import ImageDraw
+    d = ImageDraw.Draw(img)
+    cx, cy = px // 2, px // 2
+    r = max(8, px // 16)
+    d.ellipse([cx-r, cy-r, cx+r, cy+r], outline=(255, 40, 40), width=3)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=90)
+    buf.seek(0)
+    from flask import Response
+    return Response(buf.read(), mimetype="image/jpeg")
 
 @app.route("/epoch/test")
 def epoch_test():
