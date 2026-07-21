@@ -203,6 +203,57 @@ def classify(f):
     if w <= 0.06:               return "asfalto"    # grigio neutro (nessuno sterrato scende sotto 0.078)
     return "incerto"
 
+def edges(img):
+    # Nitidezza dei bordi su finestra larga: misura diagnostica (non usata dalla regola)
+    w, h = img.size
+    px = img.load()
+    lum = []
+    for yy in range(h):
+        row = []
+        for xx in range(w):
+            R, G, B = px[xx, yy]
+            row.append((0.299*R + 0.587*G + 0.114*B) / 255.0)
+        lum.append(row)
+    mags = []
+    for yy in range(1, h-1):
+        for xx in range(1, w-1):
+            gx = lum[yy][xx+1] - lum[yy][xx-1]
+            gy = lum[yy+1][xx] - lum[yy-1][xx]
+            mags.append((gx*gx + gy*gy) ** 0.5)
+    if not mags:
+        return {}
+    mags.sort()
+    n = len(mags)
+    p50 = mags[int(n*0.50)]; p95 = mags[int(n*0.95)]; mx = mags[-1]
+    mean = sum(mags)/n
+    return {"EDGE_P95": round(p95, 3), "EDGE_MAX": round(mx, 3),
+            "EDGE_MED": round(p50, 3), "SHARP": round(p95/(mean + 1e-6), 2)}
+
+
+def classify_smart(src, lon, lat, half=0.4):
+    # lettura centrale (con salto automatico delle sorgenti vuote)
+    src2, img = fetch_first_good(lon, lat, half_m=half)
+    if src2 is not None:
+        src = src2
+    f = features(img if img is not None else fetch_image(src, lon, lat, half_m=half))
+    g = classify(f)
+    if g in ("sterrato", "asfalto"):
+        return g, f
+    # traccia a due solchi: il centro e' erboso/ambiguo -> provo i lati (~1.2 m)
+    d = 1.2
+    dlat = d / 111320.0
+    dlon = d / (111320.0 * math.cos(math.radians(lat)))
+    for (ala, alo) in ((dlat, 0), (-dlat, 0), (0, dlon), (0, -dlon)):
+        try:
+            f2 = features(fetch_image(src, lon + alo, lat + ala, half_m=half))
+            if classify(f2) == "sterrato":
+                f2["nota"] = "solco laterale"
+                return "sterrato", f2
+        except Exception:
+            pass
+    return g, f
+
+
 # ======================= ENDPOINT =======================
 @app.after_request
 def cors(resp):
@@ -212,7 +263,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v10 (regola prudente). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v10b (regola prudente, funzioni ripristinate). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
