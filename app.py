@@ -173,6 +173,38 @@ def classify(f):
     if w <= 0.06:                   return "asfalto"   # grigio neutro
     return "incerto"                                   # fascia di confine 0.06-0.09
 
+def edges(img):
+    # Nitidezza dei bordi su finestra larga (~8 m): l'asfalto ha margini netti e
+    # dritti (salti di luminosita' forti e concentrati), lo sterrato sfuma
+    # nell'erba con bordi frastagliati.
+    w, h = img.size
+    px = img.load()
+    lum = []
+    for yy in range(h):
+        row = []
+        for xx in range(w):
+            R, G, B = px[xx, yy]
+            row.append((0.299*R + 0.587*G + 0.114*B) / 255.0)
+        lum.append(row)
+    mags = []
+    for yy in range(1, h-1):
+        for xx in range(1, w-1):
+            gx = lum[yy][xx+1] - lum[yy][xx-1]
+            gy = lum[yy+1][xx] - lum[yy-1][xx]
+            mags.append((gx*gx + gy*gy) ** 0.5)
+    if not mags:
+        return {}
+    mags.sort()
+    n = len(mags)
+    p50 = mags[int(n*0.50)]
+    p95 = mags[int(n*0.95)]
+    mx  = mags[-1]
+    mean = sum(mags)/n
+    # SHARP alto = pochi bordi molto forti (tipico del margine netto d'asfalto)
+    sharp = p95 / (mean + 1e-6)
+    return {"EDGE_P95": round(p95, 3), "EDGE_MAX": round(mx, 3),
+            "EDGE_MED": round(p50, 3), "SHARP": round(sharp, 2)}
+
 def classify_smart(src, lon, lat, half=0.4):
     # 1) lettura centrale
     f = features(fetch_image(src, lon, lat, half_m=half))
@@ -202,7 +234,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v7 (guardia ombra). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v8 (bordi netti). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
@@ -237,6 +269,10 @@ def surface_test():
         f = features(fetch_image(src, lon, lat, half_m=half))
         try:
             f.update(uniformity(fetch_image(src, lon, lat, half_m=1.5, px=64)))
+        except Exception:
+            pass
+        try:
+            f.update(edges(fetch_image(src, lon, lat, half_m=4.0, px=64)))
         except Exception:
             pass
         g = classify(f)
