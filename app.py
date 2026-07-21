@@ -117,7 +117,9 @@ def candidates(lon, lat):
     return out
 
 def is_blank(img):
-    # immagine vuota/nera/uniforme = la sorgente non copre davvero questo punto
+    # immagine vuota = la sorgente non copre davvero questo punto.
+    # nera (mx basso), BIANCA (mn alto: riquadro vuoto dei WMS), o quasi uniforme
+    # (il rumore JPEG rende il bianco non perfettamente piatto: soglia larga).
     w, h = img.size
     px = img.load()
     mn, mx = 255, 0
@@ -126,7 +128,7 @@ def is_blank(img):
             v = max(px[xx, yy])
             if v < mn: mn = v
             if v > mx: mx = v
-    return mx < 12 or (mx - mn) < 3
+    return mx < 12 or mn > 243 or (mx - mn) < 10
 
 def fetch_first_good(lon, lat, half_m=0.4, px=64):
     # prova le sorgenti in ordine e usa la prima che restituisce un'immagine vera
@@ -219,6 +221,7 @@ def classify(f):
     # Risultato sul dataset: 0 verdi falsi, 0 rossi falsi; decide sul ~20% dei punti,
     # con accuratezza 100% dove decide. Il resto e' onestamente "incerto".
     w = f.get("WARM", 0); L = f.get("L", 0)
+    if L > 0.97:                return "coperto"    # immagine bianca/vuota: non leggibile
     if L < 0.25 or w < -0.02:   return "coperto"    # ombra / non leggibile
     if f["ExG"] > 0.15:         return "coperto"    # vegetazione
     if w >= 0.13 and L >= 0.70: return "sterrato"   # terroso netto e chiaro
@@ -285,7 +288,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v17 (Liguria confermata). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v18 (guardia bianco + debug). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
@@ -317,6 +320,16 @@ def surface_test():
         return jsonify({"error": "nessuna sorgente copre questo punto"}), 404
     try:
         half = float(request.args.get("half", 0.4))
+        if request.args.get("debug"):
+            diag = []
+            for cand in candidates(lon, lat):
+                try:
+                    im = fetch_image(cand, lon, lat, half_m=half)
+                    diag.append({"source": cand["name"],
+                                 "esito": "vuota" if is_blank(im) else "OK"})
+                except Exception as e:
+                    diag.append({"source": cand["name"], "esito": "errore: " + str(e)[:120]})
+            return jsonify({"debug": diag})
         src2, img = fetch_first_good(lon, lat, half_m=half)
         if src2 is not None:
             src = src2
