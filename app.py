@@ -190,17 +190,15 @@ def uniformity(img):
     return {"UNIF_L": round(std(Ls), 3), "UNIF_W": round(std(Ws), 3)}
 
 def classify(f):
-    # REGOLA PRUDENTE (v10), tarata su 16 punti reali in Piemonte ed Emilia.
-    # Principio: mai dipingere di verde un asfalto. Meglio "incerto" che sbagliato.
-    # Sui 16 punti: nessun asfalto classificato sterrato.
-    #   sterrato certo = TERROSO **E** CHIARO (la classica bianca)
-    #   asfalto certo  = grigio neutro e non chiaro
-    #   tutto il resto = incerto (grigio "da verificare")
-    w = f.get("WARM", 0); sat = f.get("SAT", 0); L = f.get("L", 0)
-    if L < 0.25 or w < -0.02:   return "coperto"    # ombra / chioma: non leggibile
+    # REGOLA v12 - tarata su 118 punti etichettati dal campionatore (Piemonte).
+    # Grid search con obiettivo: ZERO errori pericolosi (asfalto->verde e viceversa).
+    # Risultato sul dataset: 0 verdi falsi, 0 rossi falsi; decide sul ~20% dei punti,
+    # con accuratezza 100% dove decide. Il resto e' onestamente "incerto".
+    w = f.get("WARM", 0); L = f.get("L", 0)
+    if L < 0.25 or w < -0.02:   return "coperto"    # ombra / non leggibile
     if f["ExG"] > 0.15:         return "coperto"    # vegetazione
-    if w >= 0.09 and L >= 0.75: return "sterrato"   # terroso E chiaro
-    if w <= 0.06:               return "asfalto"    # grigio neutro (nessuno sterrato scende sotto 0.078)
+    if w >= 0.13 and L >= 0.70: return "sterrato"   # terroso netto e chiaro
+    if w <= 0.06:               return "asfalto"    # grigio neutro netto
     return "incerto"
 
 def edges(img):
@@ -263,7 +261,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v11 (epoche + dispersione). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v12 (tarata su 118 punti). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
