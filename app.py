@@ -32,6 +32,22 @@ SOURCES = [
         "attr": "Ortofoto AGEA 2023 - Regione Emilia-Romagna",
     },
     {
+        "name": "Veneto AGEA 2024",
+        "bbox": [10.60, 44.75, 13.10, 46.70],
+        "url":  "https://idt2-geoserver.regione.veneto.it/geoserver/ows",
+        "layer": "AGEA2024",                            # (confermare con /caps)
+        "crs":  "EPSG:3857", "res_cm": 20,
+        "attr": "Ortofoto AGEA 2024 - Regione del Veneto (CC-BY/IODL)",
+    },
+    {
+        "name": "Friuli Venezia Giulia ortofoto",
+        "bbox": [12.30, 45.55, 13.95, 46.65],
+        "url":  "https://irdat-ortofoto.regione.fvg.it/geoserver/ortofoto/ows",
+        "layer": "ortofoto",                            # (confermare con /caps)
+        "crs":  "EPSG:3857", "res_cm": 20,
+        "attr": "True ortofoto 2017-2020 - Regione FVG (IRDAT)",
+    },
+    {
         "name": "Lombardia AGEA (ortofoto)",
         "bbox": [8.45, 44.65, 11.45, 46.65],
         "url":  "https://www.cartografia.servizirl.it/arcgis2/services/BaseMap/ortofoto2012UTM/ImageServer/WMSServer",
@@ -261,7 +277,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v13 (ritagli per test visione). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v14 (Veneto + Friuli VG). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
