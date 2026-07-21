@@ -234,7 +234,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v8 (bordi netti). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v8b (bordi sempre inclusi). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
@@ -277,7 +277,9 @@ def surface_test():
             pass
         g = classify(f)
         if g not in ("sterrato", "asfalto"):
-            g, f = classify_smart(src, lon, lat, half=half)
+            g, f2 = classify_smart(src, lon, lat, half=half)
+            f2.update({k: v for k, v in f.items() if k.startswith("EDGE") or k in ("SHARP", "UNIF_L", "UNIF_W")})
+            f = f2
         return jsonify({"source": src["name"], "res_cm": src["res_cm"],
                         "finestra_m": round(2 * half, 1),
                         "features": f, "guess": g})
