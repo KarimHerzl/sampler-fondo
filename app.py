@@ -127,7 +127,7 @@ def fetch_esri(lon, lat, half_m=0.4, px=64):
     url=("https://services.arcgisonline.com/arcgis/rest/services/"
          "World_Imagery/MapServer/export")
     params={"bbox":bbox,"bboxSR":"3857","imageSR":"3857","size":"%d,%d"%(FULL,FULL),
-            "format":"jpg","f":"image"}
+            "format":"jpgpng","f":"image"}
     r=requests.get(url,params=params,timeout=25,
                    headers={"User-Agent":"TracciatoriCarbonari/1.0"})
     ct=r.headers.get("content-type","")
@@ -334,7 +334,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v29 (confine Francia + ESRI). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v30 (ESRI format jpgpng). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
