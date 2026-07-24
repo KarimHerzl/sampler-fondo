@@ -167,17 +167,17 @@ def is_blank(img):
     return mx < 12 or mn > 243 or (mx - mn) < 10
 
 def fetch_first_good(lon, lat, half_m=0.4, px=64):
-    # prova le sorgenti in ordine e usa la prima che restituisce un'immagine vera
-    last = None
+    # prova le sorgenti in ordine e usa la PRIMA che restituisce un'immagine vera.
+    # Se tutte sono vuote/fallite, ritorna (None, None): meglio "nessun dato"
+    # che restituire un riquadro vuoto scambiandolo per una lettura valida.
     for src in candidates(lon, lat):
         try:
             img = fetch_image(src, lon, lat, half_m=half_m, px=px)
             if not is_blank(img):
                 return src, img
-            last = (src, img)
         except Exception:
             continue
-    return last if last else (None, None)
+    return (None, None)
 
 # ======================= WMS GetMap =======================
 def _merc(lon, lat):
@@ -347,7 +347,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v35 (preflight CORS). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v36 (no lettura da riquadro vuoto). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
