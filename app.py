@@ -263,17 +263,18 @@ def uniformity(img):
     return {"UNIF_L": round(std(Ls), 3), "UNIF_W": round(std(Ws), 3)}
 
 def classify(f):
-    # REGOLA v12 - tarata su 118 punti etichettati dal campionatore (Piemonte).
-    # Grid search con obiettivo: ZERO errori pericolosi (asfalto->verde e viceversa).
-    # Risultato sul dataset: 0 verdi falsi, 0 rossi falsi; decide sul ~20% dei punti,
-    # con accuratezza 100% dove decide. Il resto e' onestamente "incerto".
-    w = f.get("WARM", 0); L = f.get("L", 0)
-    if L > 0.97:                return "coperto"    # immagine bianca/vuota: non leggibile
-    if L < 0.25 or w < -0.02:   return "coperto"    # ombra / non leggibile
-    if f["ExG"] > 0.15:         return "coperto"    # vegetazione
-    if w >= 0.13 and L >= 0.70: return "sterrato"   # terroso netto e chiaro
-    if w <= 0.06:               return "asfalto"    # grigio neutro netto
-    return "incerto"
+    # REGOLA v13 - famiglie di terreno, tarata su 118 punti (Piemonte).
+    # Il colore separa bene ERBA (verde) e TERRA (marrone); distingue
+    # l'ASFALTO CERTO (grigio neutro, 0 sterrati nei dati); il resto e'
+    # onestamente INCERTO (grigio ghiaia/asfalto, indistinguibile a 30cm).
+    # Lo STERRATO come categoria a se' arriva dai tag OSM (lato pagina).
+    w = f.get("WARM", 0); L = f.get("L", 0); E = f.get("ExG", 0)
+    if L > 0.97:                return "vuoto"    # immagine bianca: non leggibile
+    if L < 0.20:                return "ombra"    # troppo scuro: non leggibile
+    if E > 0.10:                return "erba"     # verde: 78% sterrato erboso
+    if w > 0.13:                return "terra"    # marrone: 89% sterrato terroso
+    if w < 0.06 and w > -0.02:  return "asfalto"  # grigio neutro: 100% asfalto nei dati
+    return "incerto"                              # grigio ambiguo: ghiaia o asfalto
 
 def edges(img):
     # Nitidezza dei bordi su finestra larga: misura diagnostica (non usata dalla regola)
@@ -309,7 +310,7 @@ def classify_smart(src, lon, lat, half=0.4):
         src = src2
     f = features(img if img is not None else fetch_image(src, lon, lat, half_m=half))
     g = classify(f)
-    if g in ("sterrato", "asfalto"):
+    if g in ("erba", "terra", "asfalto"):
         return g, f
     # traccia a due solchi: il centro e' erboso/ambiguo -> provo i lati (~1.2 m)
     d = 1.2
@@ -318,9 +319,10 @@ def classify_smart(src, lon, lat, half=0.4):
     for (ala, alo) in ((dlat, 0), (-dlat, 0), (0, dlon), (0, -dlon)):
         try:
             f2 = features(fetch_image(src, lon + alo, lat + ala, half_m=half))
-            if classify(f2) == "sterrato":
+            g2 = classify(f2)
+            if g2 in ("erba", "terra"):
                 f2["nota"] = "solco laterale"
-                return "sterrato", f2
+                return g2, f2
         except Exception:
             pass
     return g, f
@@ -347,7 +349,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v36 (no lettura da riquadro vuoto). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v37 (famiglie terreno erba/terra/asfalto/incerto). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
