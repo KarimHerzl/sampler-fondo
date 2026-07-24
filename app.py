@@ -83,7 +83,7 @@ SOURCES = [
     },
     {
         "name": "Umbria AGEA 2020",
-        "bbox": [11.85, 42.35, 13.30, 43.65],
+        "bbox": [11.85, 42.35, 12.92, 43.65],
         "url":  "https://siat.regione.umbria.it/arcgis/services/public/ORTOFOTO_2020_WGS84_UTM33N/MapServer/WMSServer",
         "layer": "0",                                   # ArcGIS WMS (confermare con /caps)
         "crs":  "EPSG:3857", "res_cm": 20,              # il servizio espone UTM33N, non CRS:84
@@ -365,7 +365,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v45 (Marche in EPSG:3857). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v46 (confine Umbria ristretto). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
