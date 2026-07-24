@@ -121,8 +121,8 @@ def fetch_esri(lon, lat, half_m=0.4, px=64):
     import math as _m
     R=6378137.0
     x=R*_m.radians(lon); y=R*_m.log(_m.tan(_m.pi/4+_m.radians(lat)/2))
-    WIN_M=8.0                      # meta'-lato richiesto a ESRI (8 m -> 16 m totali)
-    FULL=256                       # pixel richiesti per la finestra ampia
+    WIN_M=50.0                     # meta'-lato ESRI (100 m totali): sotto i ~40m l'export va in errore
+    FULL=512                       # pixel richiesti (finestra ampia ad alta risoluzione)
     bbox="%f,%f,%f,%f"%(x-WIN_M,y-WIN_M,x+WIN_M,y+WIN_M)
     url=("https://services.arcgisonline.com/arcgis/rest/services/"
          "World_Imagery/MapServer/export")
@@ -134,9 +134,10 @@ def fetch_esri(lon, lat, half_m=0.4, px=64):
     if "image" not in ct:
         raise RuntimeError("ESRI no image: "+r.text[:150])
     im=Image.open(io.BytesIO(r.content)).convert("RGB")
-    # ritaglio centrale: half_m su WIN_M, in pixel
-    frac=half_m/WIN_M
-    c=FULL//2; rad=max(4,int(c*frac))
+    # ritaglio centrale: uso max(half_m, 1.5 m) per avere abbastanza pixel
+    eff=max(half_m,1.5)
+    frac=eff/WIN_M
+    c=FULL//2; rad=max(12,int(c*frac))
     return im.crop((c-rad,c-rad,c+rad,c+rad))
 
 def pick_source(lon, lat):
@@ -334,7 +335,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v30 (ESRI format jpgpng). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v32 (ESRI 50m/512px). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
