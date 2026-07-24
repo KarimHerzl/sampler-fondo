@@ -335,7 +335,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v32 (ESRI 50m/512px). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v34 (CORS per POST). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
@@ -534,6 +534,53 @@ def cross_test():
     except Exception as e:
         out["esri_err"]=str(e)[:150]
     # differenze chiave tra le due fonti
+    if out.get("agea") and out.get("esri"):
+        a,e=out["agea"],out["esri"]
+        out["diff"]={
+            "dL":round(abs(a["L"]-e["L"]),3),
+            "dWARM":round(abs(a["WARM"]-e["WARM"]),3),
+            "dExG":round(abs(a["ExG"]-e["ExG"]),3),
+            "dSAT":round(abs(a["SAT"]-e["SAT"]),3),
+        }
+    return jsonify(out)
+
+def features_from_rgb(rgb_list):
+    # rgb_list = lista di [r,g,b] (0-255) dei pixel centrali inviati dal browser.
+    # calcolo le stesse feature che features() ricava da un'immagine.
+    n=len(rgb_list)
+    if n==0: return None
+    R=sum(p[0] for p in rgb_list)/n/255.0
+    G=sum(p[1] for p in rgb_list)/n/255.0
+    B=sum(p[2] for p in rgb_list)/n/255.0
+    L=(R+G+B)/3.0
+    mx=max(R,G,B); mn=min(R,G,B)
+    SAT=0.0 if mx<=0 else (mx-mn)/mx
+    WARM=R-B
+    ExG=2*G-R-B
+    return {"L":round(L,3),"SAT":round(SAT,3),"WARM":round(WARM,3),
+            "ExG":round(ExG,3),"R":round(R,3),"G":round(G,3),"B":round(B,3)}
+
+@app.route("/cross/browser", methods=["POST"])
+def cross_browser():
+    # confronto: AGEA (letta dal server) vs ESRI (pixel inviati dal browser)
+    try:
+        data=request.get_json(force=True)
+        lon=float(data["lon"]); lat=float(data["lat"])
+        esri_px=data.get("esri_rgb",[])
+    except Exception as e:
+        return jsonify({"error":"payload: "+str(e)[:100]}),400
+    out={}
+    # AGEA dal server
+    try:
+        src,img=fetch_first_good(lon,lat,half_m=0.4)
+        out["agea"]=features(img) if img is not None else None
+        out["agea_src"]=src["name"] if src else None
+    except Exception as e:
+        out["agea_err"]=str(e)[:150]
+    # ESRI dai pixel del browser
+    out["esri"]=features_from_rgb(esri_px)
+    out["esri_n"]=len(esri_px)
+    # differenze
     if out.get("agea") and out.get("esri"):
         a,e=out["agea"],out["esri"]
         out["diff"]={
