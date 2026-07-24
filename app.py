@@ -114,6 +114,24 @@ def pick_nir(lon, lat):
             return s
     return None
 
+def fetch_esri(lon, lat, half_m=0.4, px=64):
+    # ESRI World Imagery via REST export: immagine per bbox in Web Mercator.
+    import math as _m
+    R=6378137.0
+    x=R*_m.radians(lon); y=R*_m.log(_m.tan(_m.pi/4+_m.radians(lat)/2))
+    d=half_m
+    bbox="%f,%f,%f,%f"%(x-d,y-d,x+d,y+d)
+    url=("https://services.arcgisonline.com/arcgis/rest/services/"
+         "World_Imagery/MapServer/export")
+    params={"bbox":bbox,"bboxSR":"3857","imageSR":"3857","size":"%d,%d"%(px,px),
+            "format":"jpg","f":"image"}
+    r=requests.get(url,params=params,timeout=25,
+                   headers={"User-Agent":"TracciatoriCarbonari/1.0"})
+    ct=r.headers.get("content-type","")
+    if "image" not in ct:
+        raise RuntimeError("ESRI no image: "+r.text[:200])
+    return Image.open(io.BytesIO(r.content)).convert("RGB")
+
 def pick_source(lon, lat):
     c = candidates(lon, lat)
     return c[0] if c else None
@@ -309,7 +327,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v26 (Sardegna Mosaico_2022_GB). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v27 (ESRI + verifica crociata). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
@@ -484,6 +502,39 @@ def nir_test():
                         "B": round(Bs/n/255.0, 3)})
     except Exception as e:
         return jsonify({"source": src["name"], "error": str(e)}), 502
+
+@app.route("/cross/test")
+def cross_test():
+    # Verifica crociata AGEA vs ESRI: due voli diversi, stesso punto.
+    # Serve a capire se il grigio (asfalto/ghiaia) si separa col confronto.
+    try:
+        lon=float(request.args["lon"]); lat=float(request.args["lat"])
+    except Exception:
+        return jsonify({"error":"usa ?lat=..&lon=.."}),400
+    half=float(request.args.get("half",0.4))
+    out={}
+    # AGEA (regionale)
+    try:
+        src,img=fetch_first_good(lon,lat,half_m=half)
+        out["agea"]=features(img) if img is not None else None
+        out["agea_src"]=src["name"] if src else None
+    except Exception as e:
+        out["agea_err"]=str(e)[:150]
+    # ESRI
+    try:
+        out["esri"]=features(fetch_esri(lon,lat,half_m=half))
+    except Exception as e:
+        out["esri_err"]=str(e)[:150]
+    # differenze chiave tra le due fonti
+    if out.get("agea") and out.get("esri"):
+        a,e=out["agea"],out["esri"]
+        out["diff"]={
+            "dL":round(abs(a["L"]-e["L"]),3),
+            "dWARM":round(abs(a["WARM"]-e["WARM"]),3),
+            "dExG":round(abs(a["ExG"]-e["ExG"]),3),
+            "dSAT":round(abs(a["SAT"]-e["SAT"]),3),
+        }
+    return jsonify(out)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
