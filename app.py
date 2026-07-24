@@ -327,15 +327,27 @@ def classify_smart(src, lon, lat, half=0.4):
 
 
 # ======================= ENDPOINT =======================
+from flask import make_response
+
+@app.before_request
+def handle_preflight():
+    if request.method == "OPTIONS":
+        resp = make_response("", 204)
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        return resp
+
 @app.after_request
 def cors(resp):
     resp.headers["Access-Control-Allow-Origin"] = "*"
     resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return resp
 
 @app.route("/")
 def home():
-    return "Sampler fondo v34 (CORS per POST). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v35 (preflight CORS). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
