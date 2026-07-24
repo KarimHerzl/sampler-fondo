@@ -74,9 +74,17 @@ SOURCES = [
         "attr": "Ortofoto AGEA - Regione Lombardia (uso: consultazione pubblica)",
     },
     {
+        "name": "Umbria AGEA 2020",
+        "bbox": [11.85, 42.35, 13.30, 43.65],
+        "url":  "https://www.umbriageo.regione.umbria.it/geoserver/ows",
+        "layer": "ortofoto2020",                        # (confermare con /caps)
+        "crs":  "CRS:84", "res_cm": 20,
+        "attr": "Ortofoto AGEA 2020 - Regione Umbria (solo visualizzazione, no uso commerciale)",
+    },
+    {
         "name": "Toscana ortofoto (GEOscopio)",
         "bbox": [9.60, 42.20, 12.45, 44.50],
-        "url":  "http://www502.regione.toscana.it/wmsraster/com.rt.wms.RTmap/wms?map=wmsofc",
+        "url":  "https://www502.regione.toscana.it/wmsraster/com.rt.wms.RTmap/wms?map=wmsofc",
         "layer": "rt_ofc.10k13",                        # confermato via /caps (2013, 10k)
         "crs":  "EPSG:3857", "res_cm": 20,
         "attr": "Ortofoto - Regione Toscana (GEOscopio)",
@@ -349,7 +357,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v37 (famiglie terreno erba/terra/asfalto/incerto). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v39 (Umbria + Toscana https). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
