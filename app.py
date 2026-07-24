@@ -76,8 +76,8 @@ SOURCES = [
     {
         "name": "Marche AGEA 2022",
         "bbox": [12.10, 42.65, 13.95, 44.00],
-        "url":  "https://wmscartografia.regione.marche.it/geoserver/AGEA2022/wms",
-        "layer": "Marche",                              # confermato via /caps
+        "url":  "https://wmscartografia.regione.marche.it/geoserver/ows",
+        "layer": "geoportale.intra:OrtofotoAGEA2022",   # mosaico vero (non il reticolo "Marche")
         "crs":  "CRS:84", "res_cm": 20,
         "attr": "Ortofoto AGEA 2022 - Regione Marche",
     },
@@ -365,7 +365,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v43 (Umbria ArcGIS WMS). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v44 (Marche mosaico vero). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
