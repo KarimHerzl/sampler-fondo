@@ -74,11 +74,19 @@ SOURCES = [
         "attr": "Ortofoto AGEA - Regione Lombardia (uso: consultazione pubblica)",
     },
     {
+        "name": "Marche AGEA 2022",
+        "bbox": [12.10, 42.65, 13.95, 44.00],
+        "url":  "https://wmscartografia.regione.marche.it/geoserver/AGEA2022/wms",
+        "layer": "Marche",                              # confermato via /caps
+        "crs":  "CRS:84", "res_cm": 20,
+        "attr": "Ortofoto AGEA 2022 - Regione Marche",
+    },
+    {
         "name": "Umbria AGEA 2020",
         "bbox": [11.85, 42.35, 13.30, 43.65],
-        "url":  "https://www.umbriageo.regione.umbria.it/geoserver/ows",
-        "layer": "ortofoto2020",                        # (confermare con /caps)
-        "crs":  "CRS:84", "res_cm": 20,
+        "url":  "https://siat.regione.umbria.it/arcgis/services/public/ORTOFOTO_2020_WGS84_UTM33N/MapServer/WMSServer",
+        "layer": "0",                                   # ArcGIS WMS (confermare con /caps)
+        "crs":  "EPSG:3857", "res_cm": 20,              # il servizio espone UTM33N, non CRS:84
         "attr": "Ortofoto AGEA 2020 - Regione Umbria (solo visualizzazione, no uso commerciale)",
     },
     {
@@ -357,7 +365,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v39 (Umbria + Toscana https). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v43 (Umbria ArcGIS WMS). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
