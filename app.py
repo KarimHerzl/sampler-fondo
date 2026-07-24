@@ -83,7 +83,7 @@ SOURCES = [
     },
     {
         "name": "France IGN BD ORTHO",
-        "bbox": [-5.5, 41.0, 9.8, 51.6],
+        "bbox": [-5.5, 41.0, 7.72, 51.6],
         "url":  "https://data.geopf.fr/wms-r/wms",
         "layer": "ORTHOIMAGERY.ORTHOPHOTOS",
         "crs":  "EPSG:3857", "res_cm": 20,
@@ -115,22 +115,29 @@ def pick_nir(lon, lat):
     return None
 
 def fetch_esri(lon, lat, half_m=0.4, px=64):
-    # ESRI World Imagery via REST export: immagine per bbox in Web Mercator.
+    # ESRI World Imagery: l'export va in errore su bbox troppo piccoli.
+    # Chiedo una finestra piu' ampia (WIN_M) ad alta risoluzione e ritaglio
+    # il quadrato centrale corrispondente a half_m.
     import math as _m
     R=6378137.0
     x=R*_m.radians(lon); y=R*_m.log(_m.tan(_m.pi/4+_m.radians(lat)/2))
-    d=half_m
-    bbox="%f,%f,%f,%f"%(x-d,y-d,x+d,y+d)
+    WIN_M=8.0                      # meta'-lato richiesto a ESRI (8 m -> 16 m totali)
+    FULL=256                       # pixel richiesti per la finestra ampia
+    bbox="%f,%f,%f,%f"%(x-WIN_M,y-WIN_M,x+WIN_M,y+WIN_M)
     url=("https://services.arcgisonline.com/arcgis/rest/services/"
          "World_Imagery/MapServer/export")
-    params={"bbox":bbox,"bboxSR":"3857","imageSR":"3857","size":"%d,%d"%(px,px),
+    params={"bbox":bbox,"bboxSR":"3857","imageSR":"3857","size":"%d,%d"%(FULL,FULL),
             "format":"jpg","f":"image"}
     r=requests.get(url,params=params,timeout=25,
                    headers={"User-Agent":"TracciatoriCarbonari/1.0"})
     ct=r.headers.get("content-type","")
     if "image" not in ct:
-        raise RuntimeError("ESRI no image: "+r.text[:200])
-    return Image.open(io.BytesIO(r.content)).convert("RGB")
+        raise RuntimeError("ESRI no image: "+r.text[:150])
+    im=Image.open(io.BytesIO(r.content)).convert("RGB")
+    # ritaglio centrale: half_m su WIN_M, in pixel
+    frac=half_m/WIN_M
+    c=FULL//2; rad=max(4,int(c*frac))
+    return im.crop((c-rad,c-rad,c+rad,c+rad))
 
 def pick_source(lon, lat):
     c = candidates(lon, lat)
@@ -327,7 +334,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v27 (ESRI + verifica crociata). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v29 (confine Francia + ESRI). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
