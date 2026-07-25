@@ -98,6 +98,22 @@ SOURCES = [
         "attr": "Ortofoto - Regione Toscana (GEOscopio)",
     },
     {
+        "name": "Slovenia GURS DOF",
+        "bbox": [13.35, 45.40, 16.65, 46.90],
+        "url":  "https://storitve.eprostor.gov.si/ows-pub-wms/wms",
+        "layer": "SI.GURS.ZPDZ:DOF5",
+        "crs":  "CRS:84", "res_cm": 25,
+        "attr": "Ortofoto DOF - GURS Slovenia (CC-BY)",
+    },
+    {
+        "name": "Croazia DGU DOF",
+        "bbox": [13.40, 42.30, 19.50, 46.60],
+        "url":  "https://geoportal.dgu.hr/services/inspire/orthophoto_2023_2024/wms",
+        "layer": "DOF",
+        "crs":  "EPSG:3857", "res_cm": 25,
+        "attr": "Digitalni ortofoto DOF5 - DGU Croazia",
+    },
+    {
         "name": "France IGN BD ORTHO",
         "bbox": [-5.5, 41.0, 7.72, 51.6],
         "url":  "https://data.geopf.fr/wms-r/wms",
@@ -369,7 +385,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v52 (soglia ESRI opzione 2). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v53 (Slovenia + Croazia). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
