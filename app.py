@@ -322,9 +322,13 @@ def edges(img):
 def classify_smart(src, lon, lat, half=0.4):
     # lettura centrale (con salto automatico delle sorgenti vuote)
     src2, img = fetch_first_good(lon, lat, half_m=half)
+    if img is None:
+        # nessuna ortofoto valida qui (buco di copertura): onestamente INCERTO,
+        # non forzo una lettura su un riquadro vuoto (darebbe una classe falsa).
+        return "incerto", {"nota": "nessuna ortofoto"}
     if src2 is not None:
         src = src2
-    f = features(img if img is not None else fetch_image(src, lon, lat, half_m=half))
+    f = features(img)
     g = classify(f)
     if g in ("erba", "terra", "asfalto"):
         return g, f
@@ -365,7 +369,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v47 (multi-fonte diagnostico). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v48 (no classe da riquadro vuoto). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
