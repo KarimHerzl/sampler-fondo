@@ -369,7 +369,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v48 (no classe da riquadro vuoto). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v49 (incerto onesto ovunque manchi ortofoto). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
@@ -415,9 +415,11 @@ def surface_test():
                     diag.append({"source": cand["name"], "esito": "errore: " + str(e)[:450]})
             return jsonify({"debug": diag})
         src2, img = fetch_first_good(lon, lat, half_m=half)
-        if src2 is not None:
-            src = src2
-        f = features(img if img is not None else fetch_image(src, lon, lat, half_m=half))
+        if img is None:
+            return jsonify({"source": "nessuna", "guess": "incerto",
+                            "nota": "nessuna ortofoto valida copre questo punto"})
+        src = src2
+        f = features(img)
         try:
             f.update(uniformity(fetch_image(src, lon, lat, half_m=1.5, px=64)))
         except Exception:
