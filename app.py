@@ -109,7 +109,7 @@ SOURCES = [
         "name": "Croazia DGU DOF",
         "bbox": [13.40, 42.30, 19.50, 46.60],
         "url":  "https://geoportal.dgu.hr/services/inspire/orthophoto_2023_2024/wms",
-        "layer": "DOF",
+        "layer": "OI.OrthoimageCoverage",
         "crs":  "EPSG:3857", "res_cm": 25,
         "attr": "Digitalni ortofoto DOF5 - DGU Croazia",
     },
@@ -385,7 +385,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v53 (Slovenia + Croazia). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v54 (Croazia layer INSPIRE). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
