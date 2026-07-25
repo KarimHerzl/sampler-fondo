@@ -369,7 +369,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v49 (incerto onesto ovunque manchi ortofoto). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v50 (campionatore 3 fonti). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
@@ -658,6 +658,39 @@ def multi_test():
             out["nir"]="non disponibile qui"
     except Exception as e:
         out["nir_err"]=str(e)[:150]
+    return jsonify(out)
+
+@app.route("/campione", methods=["POST", "OPTIONS"])
+def campione():
+    # CAMPIONATORE 3 FONTI: riceve i pixel ESRI dal browser, legge AGEA e NIR
+    # dal server, restituisce le feature grezze di tutte e tre per la calibrazione.
+    if request.method == "OPTIONS":
+        return ("", 204)
+    try:
+        data = request.get_json(force=True)
+        lon = float(data["lon"]); lat = float(data["lat"])
+        esri_px = data.get("esri_rgb", [])
+    except Exception as e:
+        return jsonify({"error": "payload: " + str(e)[:100]}), 400
+    out = {"lat": lat, "lon": lon}
+    # AGEA (server)
+    try:
+        src, img = fetch_first_good(lon, lat, half_m=0.4)
+        out["agea"] = {"src": src["name"], "feat": features(img)} if img is not None else None
+    except Exception as e:
+        out["agea"] = None; out["agea_err"] = str(e)[:120]
+    # NIR (server)
+    try:
+        ns = pick_nir(lon, lat)
+        if ns:
+            nimg = fetch_image(ns, lon, lat, half_m=0.4)
+            out["nir"] = {"src": ns["name"], "feat": features(nimg)} if not is_blank(nimg) else None
+        else:
+            out["nir"] = None
+    except Exception as e:
+        out["nir"] = None; out["nir_err"] = str(e)[:120]
+    # ESRI (pixel dal browser)
+    out["esri"] = {"feat": features_from_rgb(esri_px), "n": len(esri_px)} if esri_px else None
     return jsonify(out)
 
 if __name__ == "__main__":
