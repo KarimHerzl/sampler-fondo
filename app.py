@@ -369,7 +369,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v51 (ESRI asfalto certo). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v52 (soglia ESRI opzione 2). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
@@ -697,7 +697,7 @@ def campione():
 def esri_asfalto():
     # Riceve pixel ESRI dal browser per uno o piu' punti; risponde per ciascuno
     # se e' "asfalto certo" (soglia tarata su 100 punti: 0 falsi positivi).
-    # WARM<0.06 e SAT<0.17 = grigio piatto neutro tipico dell'asfalto ESRI.
+    # WARM<0.08 e SAT<0.17 = asfalto ESRI (opzione 2: 28/36 asfalti, 4 falsi su 100).
     if request.method == "OPTIONS":
         return ("", 204)
     try:
@@ -709,7 +709,7 @@ def esri_asfalto():
     for p in punti:
         px = p.get("esri_rgb", [])
         f = features_from_rgb(px) if px else None
-        certo = bool(f and f["WARM"] < 0.06 and f["SAT"] < 0.17)
+        certo = bool(f and f["WARM"] < 0.08 and f["SAT"] < 0.17)
         out.append({"idx": p.get("idx"), "asfalto_certo": certo,
                     "warm": f["WARM"] if f else None, "sat": f["SAT"] if f else None})
     return jsonify({"risultati": out})
