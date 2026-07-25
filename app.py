@@ -365,7 +365,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v46 (confine Umbria ristretto). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return "Sampler fondo v47 (multi-fonte diagnostico). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
 
 @app.route("/sources")
 def sources():
@@ -619,6 +619,39 @@ def cross_browser():
             "dExG":round(abs(a["ExG"]-e["ExG"]),3),
             "dSAT":round(abs(a["SAT"]-e["SAT"]),3),
         }
+    return jsonify(out)
+
+@app.route("/multi/test")
+def multi_test():
+    # DIAGNOSTICO: legge un punto da AGEA e NIR (le fonti raggiungibili dal server)
+    # e mostra i valori grezzi di ciascuna, per capire come tarare le soglie per fonte.
+    try:
+        lon=float(request.args["lon"]); lat=float(request.args["lat"])
+    except Exception:
+        return jsonify({"error":"usa ?lat=..&lon=.."}),400
+    out={}
+    # AGEA
+    try:
+        src,img=fetch_first_good(lon,lat,half_m=0.4)
+        if img is not None:
+            f=features(img); out["agea"]={"src":src["name"],"feat":f,"classe":classify(f)}
+        else:
+            out["agea"]=None
+    except Exception as e:
+        out["agea_err"]=str(e)[:150]
+    # NIR
+    try:
+        ns=pick_nir(lon,lat)
+        if ns:
+            nimg=fetch_image(ns,lon,lat,half_m=0.4)
+            if not is_blank(nimg):
+                nf=features(nimg); out["nir"]={"src":ns["name"],"feat":nf}
+            else:
+                out["nir"]="vuota"
+        else:
+            out["nir"]="non disponibile qui"
+    except Exception as e:
+        out["nir_err"]=str(e)[:150]
     return jsonify(out)
 
 if __name__ == "__main__":
