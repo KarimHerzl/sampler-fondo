@@ -4,7 +4,8 @@
 # Struttura a REGISTRO SORGENTI: aggiungere una regione o nazione = una riga.
 
 import io, math, os, re
-from flask import Flask, request, jsonify
+from collections import OrderedDict
+from flask import Flask, request, jsonify, Response
 import requests
 from PIL import Image
 
@@ -139,6 +140,39 @@ NIR_SOURCES = [
     # future: Emilia agea..._nir ; Toscana rt_ofc...4R1G2B (NIR nel canale rosso)
 ]
 
+# ======================= PROXY LIDAR (PCN Ministero) =======================
+# PONTE https -> http. Il servizio LiDAR del Ministero e' solo http; la pagina
+# sta su GitHub Pages in https; il browser blocca le tile http (mixed content).
+# Qui la richiesta parte dal server, dove quel vincolo non esiste.
+# NON e' un proxy aperto: upstream fisso, .map su whitelist, layer su prefisso.
+LIDAR_UPSTREAM = "http://wms.pcn.minambiente.it/ogc"
+
+# CONFERMATO via GetCapabilities: piemonte (layer EL.LIDAR.PIEMONTE.1x1.DTM /
+# .1x1.T1.DTM / .DSM_FIRST / .DSM_LAST). Le altre seguono lo stesso schema di
+# nome file osservato sul servizio: verificarle con /wms/lidar/caps?regione=...
+LIDAR_MAPPE = {
+    "piemonte":   "/ms_ogc/WMS_v1.3/servizi-LiDAR/LIDAR_PIEMONTE.map",
+    "lombardia":  "/ms_ogc/WMS_v1.3/servizi-LiDAR/LIDAR_LOMBARDIA.map",
+    "liguria":    "/ms_ogc/WMS_v1.3/servizi-LiDAR/LIDAR_LIGURIA.map",
+    "emilia":     "/ms_ogc/WMS_v1.3/servizi-LiDAR/LIDAR_EMILIA_ROMAGNA.map",
+    "veneto":     "/ms_ogc/WMS_v1.3/servizi-LiDAR/LIDAR_VENETO.map",
+    "friuli":     "/ms_ogc/WMS_v1.3/servizi-LiDAR/LIDAR_FRIULI_VENEZIA_GIULIA.map",
+    "toscana":    "/ms_ogc/WMS_v1.3/servizi-LiDAR/LIDAR_TOSCANA.map",
+    "dolomiti":   "/ms_ogc/WMS_v1.3/servizi-LiDAR/LIDAR_AREA_DOLOMITICA.map",
+}
+LIDAR_PREFISSI_OK = ("EL.LIDAR.",)
+
+# parametri WMS lasciati passare (tutto il resto viene scartato)
+LIDAR_PASS = {"service", "request", "version", "layers", "styles", "format",
+              "transparent", "width", "height", "bbox", "srs", "crs",
+              "bgcolor", "exceptions", "sld_version", "query_layers",
+              "info_format", "x", "y", "i", "j", "feature_count"}
+
+# cache in memoria: le tile LiDAR non cambiano mai, e il free tier ringrazia
+_LIDAR_CACHE = OrderedDict()
+_LIDAR_CACHE_MAX = 400          # ~400 tile: qualche decina di MB
+
+# ======================= WMS GetMap =======================
 def pick_nir(lon, lat):
     for s in NIR_SOURCES:
         b = s["bbox"]
@@ -211,7 +245,6 @@ def fetch_first_good(lon, lat, half_m=0.4, px=64):
             continue
     return (None, None)
 
-# ======================= WMS GetMap =======================
 def _merc(lon, lat):
     x = lon * 20037508.34 / 180.0
     y = math.log(math.tan((90.0 + lat) * math.pi / 360.0)) / (math.pi / 180.0)
@@ -385,7 +418,9 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return "Sampler fondo v54 (Croazia layer INSPIRE). /sources | /caps | /surface/test?lat=45.09&lon=8.48"
+    return ("Sampler fondo v55 (proxy LIDAR PCN). "
+            "/sources | /caps | /surface/test?lat=45.09&lon=8.48 | "
+            "/wms/lidar/ping | /wms/lidar/caps?regione=piemonte")
 
 @app.route("/sources")
 def sources():
@@ -408,6 +443,109 @@ def caps():
                         "filtro": q or None, "layers": shown[:80]})
     except Exception as e:
         return jsonify({"error": str(e)}), 502
+
+# ---------------- PROXY LIDAR: ponte https -> http verso il PCN ----------------
+@app.route("/wms/lidar", methods=["GET", "OPTIONS"])
+def wms_lidar():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    regione = (request.args.get("regione") or "piemonte").lower()
+    if regione not in LIDAR_MAPPE:
+        return jsonify({"error": "regione non ammessa",
+                        "ammesse": sorted(LIDAR_MAPPE.keys())}), 400
+    layers = request.args.get("layers", "")
+    if not layers.startswith(LIDAR_PREFISSI_OK):
+        return jsonify({"error": "layer non ammesso (atteso prefisso EL.LIDAR.)",
+                        "ricevuto": layers[:80]}), 400
+
+    params = {"map": LIDAR_MAPPE[regione]}
+    for k, v in request.args.items():
+        if k.lower() in LIDAR_PASS:
+            params[k] = v
+    params.setdefault("service", "WMS")
+    params.setdefault("request", "GetMap")
+    params.setdefault("version", "1.1.1")
+    params.setdefault("format", "image/png")
+
+    chiave = tuple(sorted((str(a), str(b)) for a, b in params.items()))
+    if chiave in _LIDAR_CACHE:
+        _LIDAR_CACHE.move_to_end(chiave)
+        blob, ctype = _LIDAR_CACHE[chiave]
+        r = Response(blob, content_type=ctype)
+        r.headers["Cache-Control"] = "public, max-age=604800"
+        r.headers["X-Cache"] = "HIT"
+        return r
+
+    try:
+        up = requests.get(LIDAR_UPSTREAM, params=params, timeout=25,
+                          headers={"User-Agent": "TracciatoriCarbonari/1.0"})
+    except requests.RequestException as e:
+        return jsonify({"error": "upstream non raggiungibile", "det": str(e)[:200]}), 502
+    if up.status_code != 200:
+        return jsonify({"error": "upstream HTTP %d" % up.status_code,
+                        "corpo": up.text[:300]}), 502
+
+    ctype = up.headers.get("Content-Type", "image/png")
+    blob = up.content
+    # se torna XML e' una ServiceException: la giro cosi' com'e', e' l'unico
+    # modo per capire cosa non gli piace (layer, bbox, srs...)
+    if "xml" in ctype.lower():
+        return Response(blob, content_type=ctype, status=502)
+
+    _LIDAR_CACHE[chiave] = (blob, ctype)
+    if len(_LIDAR_CACHE) > _LIDAR_CACHE_MAX:
+        _LIDAR_CACHE.popitem(last=False)
+
+    r = Response(blob, content_type=ctype)
+    r.headers["Cache-Control"] = "public, max-age=604800"
+    r.headers["X-Cache"] = "MISS"
+    return r
+
+@app.route("/wms/lidar/ping")
+def wms_lidar_ping():
+    # prova una GetMap fissa sopra Quargnento senza passare da Leaflet:
+    # dice subito se il ponte regge e se il dato c'e'.
+    regione = (request.args.get("regione") or "piemonte").lower()
+    if regione not in LIDAR_MAPPE:
+        return jsonify({"error": "regione non ammessa",
+                        "ammesse": sorted(LIDAR_MAPPE.keys())}), 400
+    layer = request.args.get("layers", "EL.LIDAR.PIEMONTE.1x1.DTM")
+    params = {
+        "map": LIDAR_MAPPE[regione], "service": "WMS", "version": "1.1.1",
+        "request": "GetMap", "layers": layer, "styles": "",
+        "srs": "EPSG:4326", "bbox": "8.45,44.90,8.60,45.00",
+        "width": "400", "height": "400", "format": "image/png",
+    }
+    try:
+        up = requests.get(LIDAR_UPSTREAM, params=params, timeout=25,
+                          headers={"User-Agent": "TracciatoriCarbonari/1.0"})
+    except Exception as e:
+        return jsonify({"esito": "KO", "det": str(e)[:200]}), 502
+    ct = up.headers.get("Content-Type", "?")
+    ok = (up.status_code == 200 and "image" in ct.lower())
+    return jsonify({"esito": "OK" if ok else "KO", "http": up.status_code,
+                    "content_type": ct, "byte": len(up.content), "layer": layer,
+                    "corpo": None if ok else up.text[:300]})
+
+@app.route("/wms/lidar/caps")
+def wms_lidar_caps():
+    # nomi layer del servizio LiDAR di una regione (stesso metodo di /caps)
+    regione = (request.args.get("regione") or "piemonte").lower()
+    if regione not in LIDAR_MAPPE:
+        return jsonify({"error": "regione non ammessa",
+                        "ammesse": sorted(LIDAR_MAPPE.keys())}), 400
+    params = {"map": LIDAR_MAPPE[regione], "service": "WMS",
+              "request": "GetCapabilities", "version": "1.3.0"}
+    try:
+        r = requests.get(LIDAR_UPSTREAM, params=params, timeout=25,
+                         headers={"User-Agent": "TracciatoriCarbonari/1.0"})
+        names = re.findall(r"<Name>\s*([^<]+?)\s*</Name>", r.text)
+        names = [n for n in names if n.startswith(LIDAR_PREFISSI_OK)]
+        return jsonify({"regione": regione, "status": r.status_code,
+                        "n": len(names), "layers": names[:80]})
+    except Exception as e:
+        return jsonify({"error": str(e)[:200]}), 502
+# ------------------------- fine proxy LIDAR -------------------------
 
 @app.route("/surface/test")
 def surface_test():
@@ -506,7 +644,6 @@ def image_crop():
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=90)
     buf.seek(0)
-    from flask import Response
     return Response(buf.read(), mimetype="image/jpeg")
 
 @app.route("/epoch/test")
