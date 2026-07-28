@@ -159,6 +159,8 @@ LIDAR_MAPPE = {
     "veneto":     "/ms_ogc/WMS_v1.3/servizi-LiDAR/LIDAR_VENETO.map",
     "friuli":     "/ms_ogc/WMS_v1.3/servizi-LiDAR/LIDAR_FRIULI_VENEZIA_GIULIA.map",
     "toscana":    "/ms_ogc/WMS_v1.3/servizi-LiDAR/LIDAR_TOSCANA.map",
+    "marche":     "/ms_ogc/WMS_v1.3/servizi-LiDAR/LIDAR_MARCHE.map",
+    "abruzzo":    "/ms_ogc/WMS_v1.3/servizi-LiDAR/LIDAR_ABRUZZO.map",
     "dolomiti":   "/ms_ogc/WMS_v1.3/servizi-LiDAR/LIDAR_AREA_DOLOMITICA.map",
 }
 LIDAR_PREFISSI_OK = ("EL.LIDAR.",)
@@ -419,7 +421,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return ("Sampler fondo v56 (surface in parallelo + proxy LIDAR PCN). "
+    return ("Sampler fondo v57 (proxy LIDAR PCN multi-regione: +marche +abruzzo, caps con bbox). "
             "/sources | /caps | /surface/test?lat=45.09&lon=8.48 | "
             "/wms/lidar/ping | /wms/lidar/caps?regione=piemonte")
 
@@ -542,8 +544,20 @@ def wms_lidar_caps():
                          headers={"User-Agent": "TracciatoriCarbonari/1.0"})
         names = re.findall(r"<Name>\s*([^<]+?)\s*</Name>", r.text)
         names = [n for n in names if n.startswith(LIDAR_PREFISSI_OK)]
+        # bbox geografico del layer radice (il primo EX_GeographicBoundingBox):
+        # serve al frontend per compilare la voce LIDAR_SRC senza leggere l'XML.
+        bbox = None
+        m = re.search(
+            r"<EX_GeographicBoundingBox>\s*"
+            r"<westBoundLongitude>([\d.+-]+)</westBoundLongitude>\s*"
+            r"<eastBoundLongitude>([\d.+-]+)</eastBoundLongitude>\s*"
+            r"<southBoundLatitude>([\d.+-]+)</southBoundLatitude>\s*"
+            r"<northBoundLatitude>([\d.+-]+)</northBoundLatitude>", r.text)
+        if m:
+            o, e_, s, n_ = (float(x) for x in m.groups())
+            bbox = [o, s, e_, n_]   # stesso ordine di LIDAR_SRC: [W,S,E,N]
         return jsonify({"regione": regione, "status": r.status_code,
-                        "n": len(names), "layers": names[:80]})
+                        "n": len(names), "layers": names[:80], "bbox": bbox})
     except Exception as e:
         return jsonify({"error": str(e)[:200]}), 502
 # ------------------------- fine proxy LIDAR -------------------------
