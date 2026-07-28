@@ -5,6 +5,7 @@
 
 import io, math, os, re
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request, jsonify, Response
 import requests
 from PIL import Image
@@ -418,7 +419,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return ("Sampler fondo v55 (proxy LIDAR PCN). "
+    return ("Sampler fondo v56 (surface in parallelo + proxy LIDAR PCN). "
             "/sources | /caps | /surface/test?lat=45.09&lon=8.48 | "
             "/wms/lidar/ping | /wms/lidar/caps?regione=piemonte")
 
@@ -593,6 +594,29 @@ def surface_test():
     except Exception as e:
         return jsonify({"source": src["name"], "error": str(e)}), 502
 
+# Quanti punti leggere in parallelo. Il lavoro e' quasi tutto ATTESA di rete
+# (una GetMap per punto, a volte cinque con i solchi laterali), quindi i thread
+# aiutano moltissimo anche sulla CPU ridotta del piano gratuito. Non si alza
+# troppo per non martellare i WMS regionali.
+SURFACE_WORKERS = int(os.environ.get("SURFACE_WORKERS", "8"))
+
+
+def _leggi_punto(p):
+    # legge UN punto: la stessa logica di prima, isolata per poterla parallelizzare
+    try:
+        lon, lat = float(p[0]), float(p[1])
+    except Exception:
+        return {"guess": "input-non-valido"}, None
+    src = pick_source(lon, lat)
+    if not src:
+        return {"guess": "nessuna-sorgente"}, None
+    try:
+        g, f = classify_smart(src, lon, lat)
+        return {"guess": g, "features": f}, f.get("WARM")
+    except Exception as e:
+        return {"guess": "errore", "err": str(e)[:100]}, None
+
+
 @app.route("/surface", methods=["POST", "OPTIONS"])
 def surface():
     if request.method == "OPTIONS":
@@ -601,20 +625,15 @@ def surface():
     pts = data.get("points", [])
     out = []
     warms = []
-    for p in pts:
-        try:
-            lon, lat = float(p[0]), float(p[1])
-        except Exception:
-            out.append({"guess": "input-non-valido"}); continue
-        src = pick_source(lon, lat)
-        if not src:
-            out.append({"guess": "nessuna-sorgente"}); continue
-        try:
-            g, f = classify_smart(src, lon, lat)
-            warms.append(f.get("WARM"))
-            out.append({"guess": g, "features": f})
-        except Exception as e:
-            out.append({"guess": "errore", "err": str(e)[:100]})
+    if pts:
+        # in PARALLELO, ma mantenendo l'ordine dei punti: il chiamante si aspetta
+        # results[i] allineato a points[i].
+        n = min(SURFACE_WORKERS, max(1, len(pts)))
+        with ThreadPoolExecutor(max_workers=n) as pool:
+            for res, w in pool.map(_leggi_punto, pts):
+                out.append(res)
+                if w is not None:
+                    warms.append(w)
     disp = None
     ws = [w for w in warms if w is not None]
     if len(ws) >= 3:
