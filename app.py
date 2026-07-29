@@ -428,7 +428,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return ("Sampler fondo v58 (proxy LIDAR con sessione HTTP riusata). "
+    return ("Sampler fondo v59 (cache per punto su /surface). "
             "/sources | /caps | /surface/test?lat=45.09&lon=8.48 | "
             "/wms/lidar/ping | /wms/lidar/caps?regione=piemonte")
 
@@ -618,6 +618,23 @@ def surface_test():
 # troppo per non martellare i WMS regionali.
 SURFACE_WORKERS = int(os.environ.get("SURFACE_WORKERS", "8"))
 
+# v59: CACHE PER PUNTO.
+# Ogni punto costa da 1 a 5 GetMap sulle ortofoto (centrale + fino a 4 laterali
+# per il caso "solco a due tracce"): e' li' che se ne va il tempo della verifica
+# fine. Ma le ortofoto NON cambiano, quindi rileggere due volte lo stesso punto
+# e' lavoro buttato. Qui teniamo il risultato indicizzato sulle coordinate
+# arrotondate a 5 decimali (~1 m, sotto la risoluzione di lettura): riverificare
+# una zona gia' battuta diventa quasi gratis e TOGLIE carico alle WMS.
+# NON si mettono in cache gli esiti "errore": sono transitori (timeout, tile
+# momentaneamente non disponibile) e congelarli darebbe un falso permanente.
+_PT_CACHE = OrderedDict()
+_PT_CACHE_MAX = int(os.environ.get("PT_CACHE_MAX", "20000"))
+_PT_HIT = [0, 0]        # [hit, miss] da quando gira il processo
+
+
+def _pt_key(lon, lat):
+    return (round(float(lon), 5), round(float(lat), 5))
+
 
 def _leggi_punto(p):
     # legge UN punto: la stessa logica di prima, isolata per poterla parallelizzare
@@ -625,12 +642,26 @@ def _leggi_punto(p):
         lon, lat = float(p[0]), float(p[1])
     except Exception:
         return {"guess": "input-non-valido"}, None
+    # cache (v59): stesso punto gia' letto -> nessuna richiesta alle ortofoto
+    ck = _pt_key(lon, lat)
+    hit = _PT_CACHE.get(ck)
+    if hit is not None:
+        _PT_CACHE.move_to_end(ck)
+        _PT_HIT[0] += 1
+        res, warm = hit
+        return dict(res), warm
+    _PT_HIT[1] += 1
     src = pick_source(lon, lat)
     if not src:
         return {"guess": "nessuna-sorgente"}, None
     try:
         g, f = classify_smart(src, lon, lat)
-        return {"guess": g, "features": f}, f.get("WARM")
+        res, warm = {"guess": g, "features": f}, f.get("WARM")
+        # in cache solo gli esiti stabili: "errore" resta fuori (vedi commento)
+        _PT_CACHE[ck] = (res, warm)
+        if len(_PT_CACHE) > _PT_CACHE_MAX:
+            _PT_CACHE.popitem(last=False)
+        return dict(res), warm
     except Exception as e:
         return {"guess": "errore", "err": str(e)[:100]}, None
 
@@ -658,6 +689,8 @@ def surface():
         m = sum(ws)/len(ws)
         disp = round((sum((w-m)**2 for w in ws)/len(ws)) ** 0.5, 4)
     return jsonify({"results": out, "DISP_W": disp,
+                    "cache": {"hit": _PT_HIT[0], "miss": _PT_HIT[1],
+                              "in_cache": len(_PT_CACHE)},
                     "nota_disp": "dispersione WARM sui punti inviati: bassa = monotono (asfalto?), alta = variegato (sterrato?)"})
 
 @app.route("/image")
