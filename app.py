@@ -147,6 +147,13 @@ NIR_SOURCES = [
 # Qui la richiesta parte dal server, dove quel vincolo non esiste.
 # NON e' un proxy aperto: upstream fisso, .map su whitelist, layer su prefisso.
 LIDAR_UPSTREAM = "http://wms.pcn.minambiente.it/ogc"
+# v58: sessione condivisa con pool di connessioni. Prima ogni tile apriva (e
+# chiudeva) una connessione nuova verso il PCN: con 30 tile a schermo erano 30
+# handshake. Ora la connessione resta aperta e viene riusata.
+_LIDAR_SES = requests.Session()
+_LIDAR_SES.headers.update({"User-Agent": "TracciatoriCarbonari/1.0"})
+_LIDAR_SES.mount("http://", requests.adapters.HTTPAdapter(
+    pool_connections=4, pool_maxsize=16, max_retries=1))
 
 # CONFERMATO via GetCapabilities: piemonte (layer EL.LIDAR.PIEMONTE.1x1.DTM /
 # .1x1.T1.DTM / .DSM_FIRST / .DSM_LAST). Le altre seguono lo stesso schema di
@@ -421,7 +428,7 @@ def cors(resp):
 
 @app.route("/")
 def home():
-    return ("Sampler fondo v57 (proxy LIDAR PCN multi-regione: +marche +abruzzo, caps con bbox). "
+    return ("Sampler fondo v58 (proxy LIDAR con sessione HTTP riusata). "
             "/sources | /caps | /surface/test?lat=45.09&lon=8.48 | "
             "/wms/lidar/ping | /wms/lidar/caps?regione=piemonte")
 
@@ -480,8 +487,7 @@ def wms_lidar():
         return r
 
     try:
-        up = requests.get(LIDAR_UPSTREAM, params=params, timeout=25,
-                          headers={"User-Agent": "TracciatoriCarbonari/1.0"})
+        up = _LIDAR_SES.get(LIDAR_UPSTREAM, params=params, timeout=25)
     except requests.RequestException as e:
         return jsonify({"error": "upstream non raggiungibile", "det": str(e)[:200]}), 502
     if up.status_code != 200:
@@ -520,8 +526,7 @@ def wms_lidar_ping():
         "width": "400", "height": "400", "format": "image/png",
     }
     try:
-        up = requests.get(LIDAR_UPSTREAM, params=params, timeout=25,
-                          headers={"User-Agent": "TracciatoriCarbonari/1.0"})
+        up = _LIDAR_SES.get(LIDAR_UPSTREAM, params=params, timeout=25)
     except Exception as e:
         return jsonify({"esito": "KO", "det": str(e)[:200]}), 502
     ct = up.headers.get("Content-Type", "?")
@@ -540,8 +545,7 @@ def wms_lidar_caps():
     params = {"map": LIDAR_MAPPE[regione], "service": "WMS",
               "request": "GetCapabilities", "version": "1.3.0"}
     try:
-        r = requests.get(LIDAR_UPSTREAM, params=params, timeout=25,
-                         headers={"User-Agent": "TracciatoriCarbonari/1.0"})
+        r = _LIDAR_SES.get(LIDAR_UPSTREAM, params=params, timeout=25)
         names = re.findall(r"<Name>\s*([^<]+?)\s*</Name>", r.text)
         names = [n for n in names if n.startswith(LIDAR_PREFISSI_OK)]
         # bbox geografico del layer radice (il primo EX_GeographicBoundingBox):
